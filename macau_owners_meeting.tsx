@@ -4,14 +4,14 @@ const LAW='《第14/2017號法律》';
 const DEFAULT_PW='1111';
 
 const THRESHOLDS={
-  general:    {label:'一般決議',  pct:'15%',law:`${LAW}第29條第1款`,desc:'贊成>反對，且贊成份額≥15%',eg:'批准帳目、通過預算'},
-  special:    {label:'特別決議',  pct:'25%',law:`${LAW}第29條第2款`,desc:'贊成>反對，且贊成份額≥25%',eg:'修改內部規章'},
-  majority:   {label:'過半數決議',pct:'50%',law:`${LAW}第29條第3款`,desc:'贊成份額>50%',eg:'更換管委會'},
-  renovation: {label:'更新工程',  pct:'2/3',law:`${LAW}第29條第4款`,desc:'贊成份額≥66.67%',eg:'外牆翻新'},
+  general:    {label:'一般決議',  pct:'15%',law:`${LAW}第29條第1款`,fulltext:'贊成份額大於反對份額，且贊成份額不少於建築物總份額百分之十五',desc:'贊成>反對，且贊成份額≥15%',eg:'批准帳目、通過預算'},
+  special:    {label:'特別決議',  pct:'25%',law:`${LAW}第29條第2款`,fulltext:'贊成份額大於反對份額，且贊成份額不少於建築物總份額百分之二十五',desc:'贊成>反對，且贊成份額≥25%',eg:'修改內部規章'},
+  majority:   {label:'過半數決議',pct:'50%',law:`${LAW}第29條第3款`,fulltext:'贊成份額超過建築物總份額百分之五十',desc:'贊成份額>50%',eg:'更換管委會'},
+  renovation: {label:'更新工程',  pct:'2/3',law:`${LAW}第29條第4款`,fulltext:'贊成份額不少於建築物總份額三分之二（66.67%）',desc:'贊成份額≥66.67%',eg:'外牆翻新'},
 };
 const PRESETS={
-  first:{label:'第一次召開業主大會',agendas:[{title:'宣佈業主大會正式成立',threshold:'general'},{title:'選舉管理委員會',threshold:'majority'},{title:'制定樓宇內部規章',threshold:'majority'},{title:'通過大廈管理年度預算',threshold:'general'}]},
-  annual:{label:'法定年度業主大會',agendas:[{title:'審議管理委員會年度工作報告',threshold:'general'},{title:'批准上年度管理帳目',threshold:'general'},{title:'批准本年度管理預算',threshold:'general'},{title:'其他事項',threshold:'general'}]},
+  first:{label:'第一次召開業主大會',agendas:[{title:'選舉大會主席',threshold:'majority'},{title:'宣佈業主大會正式成立',threshold:'general'},{title:'選舉管理委員會',threshold:'majority'},{title:'制定樓宇內部規章',threshold:'majority'},{title:'通過大廈管理年度預算',threshold:'general'}]},
+  annual:{label:'法定年度業主大會',agendas:[{title:'選舉大會主席',threshold:'majority'},{title:'審議管理委員會年度工作報告',threshold:'general'},{title:'批准上年度管理帳目',threshold:'general'},{title:'批准本年度管理預算',threshold:'general'},{title:'其他事項',threshold:'general'}]},
 };
 
 const LAWS_SHORT=[
@@ -356,6 +356,8 @@ export default function App(){
   const [loginErr,setLoginErr]=useState('');
   const [newU,setNewU]=useState({id:'',owner:'',share:''});
   const [newA,setNewA]=useState({title:'',threshold:'general'});
+  const [presetAgendas,setPresetAgendas]=useState([]);// 臨時預設議程
+  const [presetSelection,setPresetSelection]=useState({});// 記錄選中狀態
   const csvRef=useRef();
   const [now,setNow]=useState(new Date());
   const [welcomed,setWelcomed]=useState(false);
@@ -399,7 +401,12 @@ export default function App(){
 
   const addUnit=()=>{const id=newU.id.trim().toUpperCase();if(!id||!newU.owner.trim()||!newU.share)return;if(units.find(u=>u.id===id))return alert('單位編號已存在');setUnits(p=>[...p,{id,owner:newU.owner.trim(),share:parseFloat(newU.share),status:'absent',proxyType:null,proxyToOwnerId:null,password:DEFAULT_PW,verified:false,ballotType:'online'}]);setNewU({id:'',owner:'',share:''});};
   const addAgenda=()=>{if(!newA.title.trim())return;const id=mkId();setAgendas(p=>[...p,{id,title:newA.title.trim(),threshold:newA.threshold}]);setAS(p=>({...p,[id]:initSD()}));setNewA({title:'',threshold:'general'});};
-  const loadPreset=(type)=>{const nag=PRESETS[type].agendas.map(a=>({id:mkId(),...a}));setAgendas(nag);const st={};nag.forEach(a=>{st[a.id]=initSD();});setAS(st);};
+  const loadPreset=(type)=>{
+    const nag=PRESETS[type].agendas.map(a=>({id:mkId(),...a}));
+    setPresetAgendas(nag);
+    const sel={};nag.forEach(a=>{sel[a.id]=true;});
+    setPresetSelection(sel);
+  };
   const importCSV=(e)=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{const imp=[];ev.target.result.split('\n').slice(1).forEach(l=>{const[id,owner,share]=l.split(',').map(s=>s.trim());if(id&&owner&&share&&!units.find(u=>u.id===id.toUpperCase()))imp.push({id:id.toUpperCase(),owner,share:parseFloat(share),status:'absent',proxyType:null,proxyToOwnerId:null,password:DEFAULT_PW,verified:false,ballotType:'online'});});setUnits(p=>[...p,...imp]);alert(`已成功匯入 ${imp.length} 個單位`);};r.readAsText(file);e.target.value='';};
 
   const canStart=quorum&&agendas.length>0&&meeting.title.trim()&&meeting.date.trim()&&meeting.time.trim()&&meeting.location.trim();
@@ -615,6 +622,47 @@ export default function App(){
             <p className="text-purple-800 font-medium text-sm mb-1">快速載入法定必要議程</p>
             <div className="flex gap-2 flex-wrap">{Object.entries(PRESETS).map(([k,v])=><button key={k} onClick={()=>loadPreset(k)} className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium">{v.label}</button>)}</div>
           </div>
+
+          {/* 預設議程選擇界面 */}
+          {presetAgendas.length>0&&<div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-3">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-amber-800 font-semibold text-sm">📋 選擇要新增的議程</p>
+              <button onClick={()=>{setPresetAgendas([]);setPresetSelection({});}} className="text-xs text-amber-600 hover:text-amber-800 underline">取消</button>
+            </div>
+            <div className="space-y-2 mb-3">
+              {presetAgendas.map((a,i)=>(
+                <div key={a.id} className="bg-white border border-amber-200 rounded-lg p-3">
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" checked={presetSelection[a.id]||false} onChange={e=>setPresetSelection(p=>({...p,[a.id]:e.target.checked}))} className="mt-1 w-4 h-4 accent-amber-600"/>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-slate-400 font-mono text-xs">{i+1}</span>
+                        <input type="text" value={a.title} onChange={e=>setPresetAgendas(p=>p.map(x=>x.id===a.id?{...x,title:e.target.value}:x))} className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm"/>
+                        <select value={a.threshold} onChange={e=>setPresetAgendas(p=>p.map(x=>x.id===a.id?{...x,threshold:e.target.value}:x))} className="border border-slate-300 rounded px-2 py-1 text-xs bg-white">
+                          {Object.entries(THRESHOLDS).map(([k,v])=><option key={k} value={k}>{v.label}（{v.pct}）</option>)}
+                        </select>
+                      </div>
+                      <div className="text-xs text-slate-600 bg-slate-50 rounded px-2 py-1.5 mt-1">
+                        <div><strong>{THRESHOLDS[a.threshold].label}</strong> — {THRESHOLDS[a.threshold].fulltext}</div>
+                        <div className="text-slate-500 mt-1">📋 {THRESHOLDS[a.threshold].law}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={()=>{
+                const toAdd=presetAgendas.filter(a=>presetSelection[a.id]);
+                setAgendas(p=>[...p,...toAdd]);
+                const st={};toAdd.forEach(a=>{st[a.id]=initSD();});setAS(p=>({...p,...st}));
+                setPresetAgendas([]);setPresetSelection({});
+                alert(`已新增 ${toAdd.length} 個議程`);
+              }} className="flex-1 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium">✅ 確認新增選中議程</button>
+              <button onClick={()=>{setPresetAgendas([]);setPresetSelection({});}} className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-sm">取消</button>
+            </div>
+          </div>}
+
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-3">
             <p className="text-blue-700 font-medium text-sm mb-2">新增自訂議案</p>
             <div className="flex gap-2 mb-3 flex-wrap">
@@ -622,7 +670,7 @@ export default function App(){
               <select value={newA.threshold} onChange={e=>setNewA(p=>({...p,threshold:e.target.value}))} className="border border-slate-300 rounded px-3 py-2 text-sm bg-white">{Object.entries(THRESHOLDS).map(([k,v])=><option key={k} value={k}>{v.label}（{v.pct}）</option>)}</select>
               <button onClick={addAgenda} className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">新增</button>
             </div>
-            <div className="grid grid-cols-2 gap-2">{Object.entries(THRESHOLDS).map(([k,v])=>(<div key={k} onClick={()=>setNewA(p=>({...p,threshold:k}))} className={`rounded-lg p-2.5 text-xs border cursor-pointer ${newA.threshold===k?'border-blue-400 bg-blue-100':'border-slate-200 bg-white hover:bg-slate-50'}`}><div className="font-semibold text-slate-700">{v.label}（{v.pct}）<span className="text-slate-400 font-normal ml-1">— {v.law}</span></div><div className="text-slate-500 mt-0.5">{v.desc}</div><div className="text-slate-400 italic mt-0.5">例：{v.eg}</div></div>))}</div>
+            <div className="grid grid-cols-2 gap-2">{Object.entries(THRESHOLDS).map(([k,v])=>(<div key={k} onClick={()=>setNewA(p=>({...p,threshold:k}))} className={`rounded-lg p-2.5 text-xs border cursor-pointer ${newA.threshold===k?'border-blue-400 bg-blue-100':'border-slate-200 bg-white hover:bg-slate-50'}`}><div className="font-semibold text-slate-700">{v.label}（{v.pct}）<span className="text-slate-400 font-normal ml-1">— {v.law}</span></div><div className="text-slate-500 mt-0.5">{v.fulltext}</div><div className="text-slate-400 italic mt-0.5">例：{v.eg}</div></div>))}</div>
           </div>
           {agendas.length===0?<div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-400 text-sm">尚未新增任何議案</div>
           :<div className="space-y-2">{agendas.map((a,i)=>(<div key={a.id} className="bg-white border border-slate-200 rounded-xl px-4 py-3 flex items-center gap-3"><span className="text-slate-300 font-mono text-sm w-5 shrink-0">{i+1}</span><span className="flex-1 text-slate-800 text-sm">{a.title}</span><Badge color={a.threshold==='general'?'gray':a.threshold==='special'?'blue':a.threshold==='majority'?'purple':'red'}>{THRESHOLDS[a.threshold].label}（{THRESHOLDS[a.threshold].pct}）</Badge>{status==='pending'&&<button onClick={()=>{setAgendas(p=>p.filter(x=>x.id!==a.id));setAS(p=>{const n={...p};delete n[a.id];return n;});}} className="text-red-400 hover:text-red-600 text-xs">刪除</button>}</div>))}</div>}
