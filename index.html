@@ -1,665 +1,747 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-HK">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>澳門業主大會管理與投票系統</title>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>分層建築物所有人大會會議管理系統 (單機測試版)</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <style>
+    .hide-scrollbar::-webkit-scrollbar { display: none; }
+    .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 8px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+    @media print {
+      body * { visibility: hidden; }
+      #print-report-container, #print-report-container * { visibility: visible; }
+      #print-report-container { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; }
+    }
+  </style>
 </head>
-<body>
-    <div id="root"></div>
-    <script type="text/babel">
-const { useState, useMemo, useRef, useCallback, useEffect } = React;
+<body class="bg-slate-100 text-slate-800">
+  <div id="root"></div>
 
-const LAW='《第14/2017號法律》分層建築物共同部分的管理法律制度';
-const DEFAULT_PW='1111';
+  <script type="text/babel">
+    const { useState, useEffect, useMemo, useRef } = React;
 
-const THRESHOLDS={
-  general:    {label:'一般決議',  pct:'15%',law:`${LAW}第29條第1款`,fulltext:'贊成份額大於反對份額，且贊成份額不少於建築物總份額百分之十五',desc:'贊成>反對，且贊成份額≥15%',eg:'批准帳目、通過預算'},
-  special:    {label:'特別決議',  pct:'25%',law:`${LAW}第29條第2款`,fulltext:'贊成份額大於反對份額，且贊成份額不少於建築物總份額百分之二十五',desc:'贊成>反對，且贊成份額≥25%',eg:'修改內部規章'},
-  majority:   {label:'過半數決議',pct:'50%',law:`${LAW}第29條第3款`,fulltext:'贊成份額超過建築物總份額百分之五十',desc:'贊成份額>50%',eg:'更換管委會'},
-  renovation: {label:'更新工程',  pct:'2/3',law:`${LAW}第29條第4款`,fulltext:'贊成份額不少於建築物總份額三分之二（66.67%）',desc:'贊成份額≥66.67%',eg:'外牆翻新'},
-};
-const PRESETS={
-  first:{label:'第一次召開業主大會',agendas:[{title:'選舉大會主席',threshold:'majority'},{title:'宣佈業主大會正式成立',threshold:'general'},{title:'選舉管理委員會',threshold:'majority'},{title:'制定樓宇內部規章',threshold:'majority'},{title:'通過大廈管理年度預算',threshold:'general'}]},
-  annual:{label:'法定年度業主大會',agendas:[{title:'選舉大會主席',threshold:'majority'},{title:'審議管理委員會年度工作報告',threshold:'general'},{title:'批准上年度管理帳目',threshold:'general'},{title:'批准本年度管理預算',threshold:'general'},{title:'其他事項',threshold:'general'}]},
-};
+    // --- 圖示庫壓縮版 ---
+    const I = ({ p, c = "w-6 h-6" }) => <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={c} dangerouslySetInnerHTML={{__html: p}} />;
+    const Users = (props) => <I {...props} p='<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>' />;
+    const ClipboardCheck = (props) => <I {...props} p='<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 14 2 2 4-4"/>' />;
+    const FileText = (props) => <I {...props} p='<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>' />;
+    const AlertCircle = (props) => <I {...props} p='<circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/>' />;
+    const CheckCircle = (props) => <I {...props} p='<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/>' />;
+    const XCircle = (props) => <I {...props} p='<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>' />;
+    const Info = (props) => <I {...props} p='<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>' />;
+    const BarChart3 = (props) => <I {...props} p='<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>' />;
+    const Settings = (props) => <I {...props} p='<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>' />;
+    const LogOut = (props) => <I {...props} p='<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>' />;
+    const Play = (props) => <I {...props} p='<polygon points="5 3 19 12 5 21 5 3"/>' />;
+    const Square = (props) => <I {...props} p='<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>' />;
+    const Plus = (props) => <I {...props} p='<path d="M5 12h14"/><path d="M12 5v14"/>' />;
+    const ShieldCheck = (props) => <I {...props} p='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/>' />;
+    const ArrowLeft = (props) => <I {...props} p='<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>' />;
+    const Trash2 = (props) => <I {...props} p='<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/>' />;
+    const BookOpen = (props) => <I {...props} p='<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>' />;
+    const FileSpreadsheet = (props) => <I {...props} p='<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/>' />;
+    const ExternalLink = (props) => <I {...props} p='<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/>' />;
+    const UserSquare2 = (props) => <I {...props} p='<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="12" cy="10" r="3"/><path d="M7 21v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/>' />;
+    const Lock = (props) => <I {...props} p='<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>' />;
+    const Printer = (props) => <I {...props} p='<polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/>' />;
 
-const LAWS_COMPLETE=[
-  {art:'第1條',title:'標的及範圍',fulltext:'本法律訂定分層建築物共同部分的管理法律制度。分層建築物的管理，包括一切旨在促進及規範分層建築物共同部分的使用、收益、安全、保存及改良的行為。',category:'一般規定'},
-  {art:'第3條',title:'分層建築物各機關',fulltext:'在簡單管理制度下，設有一個決議機關，稱為分層建築物所有人大會，以及一個執行機關，稱為管理機關。',category:'一般規定'},
-  {art:'第4條',title:'分層建築物所有人的權利',fulltext:'分層建築物所有人有以下權利：（一）參與分層建築物所有人大會的會議及投票；（二）在本法律規定的情況下召集分層建築物所有人大會會議；（三）向管理機關提出建議、訴求或投訴；（四）就管理機關的行為向分層建築物所有人大會提出申訴；（五）提起司法訴訟。',category:'業主權利義務'},
-  {art:'第5條',title:'分層建築物所有人的義務',fulltext:'分層建築物所有人有以下義務：（一）遵守分層所有權制度的規定及有關樓宇及其設施的建造、保存、使用及安全方面的法例；（二）遵守分層建築物的規章；（三）遵守分層建築物各機關在其職權範圍內所作的決定；（四）繳付分層建築物的負擔。',category:'業主權利義務'},
-  {art:'第7條',title:'分層建築物的負擔',fulltext:'分層建築物的負擔是指為分層建築物共同部分的使用、收益、安全、保存及改良所需的開支、為支付屬共同利益的服務所需的開支。包括清潔、保安、管理、保險及各項設施的保養等開支。',category:'財務與負擔'},
-  {art:'第8條',title:'分層建築物負擔的分擔及繳付',fulltext:'除分層所有權的設定憑證另有規定外，分層建築物的負擔由全體分層建築物所有人按其獨立單位在分層建築物總值中所占的百分比或千分比攤分。負擔應定期支付，最遲於每月十日向管理機關支付。',category:'財務與負擔'},
-  {art:'第10條',title:'共同儲備基金',fulltext:'必須設立分層建築物的共同儲備基金，以承擔非預見性的開支，為避免共同部分的滅失、損毀或損壞所需的開支，以及進行共同部分的保存及修補工作而產生的必要開支。供款金額相當於定期給付數額的十分之一。',category:'財務與負擔'},
-  {art:'第14條',title:'更新工程',fulltext:'在分層建築物共同部分進行更新工程，須經分層建築物所有人大會許可方可進行，有關許可須按第29條第4款規定通過的決議作出。更新工程是指導致更改建築線條或外觀的工程，涉及更改結構部分的工程，或更改共同部分用途的工程。',category:'工程管理'},
-  {art:'第17條',title:'保險',fulltext:'為建築物投保火險屬強制性，不論獨立單位或共同部分均須投保。火險的保險金額不得低於主管當局所定出的金額。就每一單位的投保應由有關分層建築物所有人進行，就共同部分的投保則應由分層建築物所有人大會指定的人進行。',category:'工程管理'},
-  {art:'第20條',title:'分層建築物的規章',fulltext:'有十個以上獨立單位的分層建築物，應具備一份分層建築物的規章，以規範共同部分的使用、收益、安全、保存及改良。規章由分層建築物所有人大會通過，修改亦需大會決議。分層建築物所有人、第三人及獨立單位的任何占有人或持有人，均受規章約束。',category:'組織管理'},
-  {art:'第22條',title:'分層建築物所有人大會的職權',fulltext:'分層建築物所有人大會尤其具職權就以下事宜作出決議：（一）組成管理機關；（二）管理機關成員的報酬；（三）選舉及罷免管理機關成員；（四）通過上年度的帳目；（五）通過本年度的預算；（六）通過分層建築物的規章；（七）許可進行更新工程；（八）投保火險及其他保險。',category:'大會職權'},
-  {art:'第23條',title:'召集會議',fulltext:'如分層建築物所有人大會尚未舉行第一次會議，則只要出現下列任一情況，實際管理分層建築物的自然人或法人必須召集該會議：（一）分層建築物的半數獨立單位已移轉；（二）分層建築物的百分之三十的獨立單位已被占用；（三）自樓宇使用准照發出之日起十八個月後。',category:'大會程序'},
-  {art:'第24條',title:'召集書',fulltext:'分層建築物所有人大會召集書應於舉行會議前，在樓宇入口的大堂連續張貼二十日。召集書必須載有以下事項：（一）舉行會議的日期、時間及地點；（二）會議議程；（三）接收代理文書的地址。',category:'大會程序'},
-  {art:'第26條',title:'代理',fulltext:'分層建築物所有人可由受權人或另一分層建築物所有人代理。受權人需具備經公證認定被代理人簽名的函件；另一業主代理需具備被代理人簽名的函件並出示身份證明文件副本。代理文件應在會議開始前送交召集人。',category:'大會程序'},
-  {art:'第27條',title:'委託投票之限制',fulltext:'非業主代理人最多可代表兩名業主；業主代理人則不設此限制。',category:'大會程序'},
-  {art:'第28條',title:'投票',fulltext:'每一分層建築物所有人在分層建築物所有人大會上按其獨立單位在分層建築物總值中所占的百分比或千分比擁有相應的票數。投票是透過選票指出意向而作出。',category:'大會程序'},
-  {art:'第29條',title:'法定份額與決議門檻',fulltext:'一般決議：贊成份額大於反對份額，且贊成份額不少於總份額15%。特別決議：贊成份額大於反對份額，且贊成份額不少於總份額25%。過半數決議：贊成份額超過總份額50%。更新工程：贊成份額不少於總份額2/3（66.67%）。',category:'決議程序'},
-  {art:'第31條',title:'決議之效力',fulltext:'業主大會依法定程序通過之決議，對所有業主均具約束力，包括缺席或反對之業主。決議應記錄於會議紀錄冊內，並由管理委員會主席及秘書簽署。',category:'決議程序'},
-  {art:'第32條',title:'會議紀錄',fulltext:'業主大會每次會議均須製作會議紀錄，內容須包括出席業主名單、討論事項、投票結果及通過之決議。會議紀錄須於大會後30日內完成，並由管理委員會主席簽署確認。',category:'大會程序'},
-  {art:'第38條',title:'管理機關組成及報酬',fulltext:'管理機關可由一名或多名成員組成；屬多於一百個獨立單位的分層建築物，須由至少三名成員組成。屬分層建築物所有人及適用第6條規定的用益權人及預約取得人，方可成為管理機關成員。管理機關成員的報酬按分層建築物所有人大會的決議的規定及條件支付。',category:'管理機構'},
-  {art:'第39條',title:'選舉及罷免',fulltext:'管理機關成員由分層建築物所有人大會選出。必須具備合理理由，方可按第29條第2款規定經分層建築物所有人大會議決罷免管理機關成員。合理理由包括：嚴重或重複地違反其職責，執行有關職務時因職務而犯罪，或欠缺執行職務的能力。',category:'管理機構'},
-  {art:'第40條',title:'任期',fulltext:'管理機關成員的任期不可超過三年，且須透過分層建築物所有人大會的另一決議方可續任。管理機關應在任期屆滿前至少三個月，召集分層建築物所有人大會會議，以便選出管理機關成員。',category:'管理機構'},
-  {art:'第43條',title:'管理機關職務',fulltext:'管理機關的職務包括：召集分層建築物所有人大會會議；編製及提交上年度的帳目及本年度的預算；收取各項收入及作出各項開支；要求每一分層建築物所有人支付應付的負擔；投保及續保有關保險；監督共有物的使用；執行分層建築物所有人大會的決議。',category:'管理機構'},
-  {art:'第47條',title:'管理機關成員的義務',fulltext:'管理機關成員應謹慎及善意地執行職務，其所作出的行為應符合分層建築物所有人的利益。管理機關成員必須創設條件使分層建築物所有人在有需要時能與其聯絡，並平等及公平對待分層建築物所有人。',category:'管理機構'},
-  {art:'第49條',title:'與商業企業主訂立的合同',fulltext:'為協助管理機關成員執行其職務，分層建築物所有人大會可議決聘請提供分層建築物管理服務的商業企業主。合同須以書面方式訂立，應列明提供服務者的識別資料、合同期間、合同的標的、服務的回報及支付條件。',category:'管理機構'},
-];
+    const thresholdRules = {
+      'general_15': { label: '一般決議', desc: '贊成 > 反對，且贊成份額 ≥ 15% (根據第14/2017號法律第29條第1款)' },
+      'special_25': { label: '特別決議', desc: '贊成 > 反對，且贊成份額 ≥ 25% (根據第14/2017號法律第29條第2款)' },
+      'special_50': { label: '過半數決議', desc: '贊成份額 > 50% (根據第14/2017號法律第29條第3款)' },
+      'special_66': { label: '更新工程', desc: '贊成份額 ≥ 2/3 [約66.67%] (根據第14/2017號法律第29條第4款)' }
+    };
 
-const STAGE_META={
-  idle:    {label:'待開始',    badge:'gray',  next:'intro',  nextBtn:'▶ 開始介紹'},
-  intro:   {label:'介紹中',    badge:'blue',  next:'voting', nextBtn:'🗳 開始投票'},
-  voting:  {label:'投票進行中',badge:'green', next:'closed', nextBtn:'🔒 截止投票'},
-  closed:  {label:'投票截止',  badge:'amber', next:'results',nextBtn:'📊 公佈結果'},
-  results: {label:'結果已公佈',badge:'purple',next:null,     nextBtn:null},
-};
-const STAGE_BTN={idle:'bg-blue-600 hover:bg-blue-700',intro:'bg-green-600 hover:bg-green-700',voting:'bg-red-600 hover:bg-red-700',closed:'bg-purple-600 hover:bg-purple-700'};
+    // 備用初始資料
+    const fallbackUnits = [
+      { id: 'U01', unit: '1-A', owner: '陳大文', valuePercent: 12.5, status: 'absent', proxyType: 'none', proxyToOwnerId: '', proxyNonOwner: { name: '', idCard: '', phone: '' }, isConfirmed: false, ownerIdCardLast4: '' },
+      { id: 'U02', unit: '1-B', owner: '李小萍', valuePercent: 12.5, status: 'absent', proxyType: 'none', proxyToOwnerId: '', proxyNonOwner: { name: '', idCard: '', phone: '' }, isConfirmed: false, ownerIdCardLast4: '' },
+      { id: 'U03', unit: '2-A', owner: '王建國', valuePercent: 15.0, status: 'absent', proxyType: 'none', proxyToOwnerId: '', proxyNonOwner: { name: '', idCard: '', phone: '' }, isConfirmed: false, ownerIdCardLast4: '' }
+    ];
 
-const mkId=()=>Math.random().toString(36).slice(2,9);
-const fmtNow=()=>new Date().toLocaleString('zh-TW',{hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
-const initSD=()=>({stage:'idle',introAt:null,votingAt:null,closedAt:null,resultsAt:null,notes:''});
+    function MacauCondoMeeting() {
+      const [currentView, setCurrentView] = useState('home'); 
+      const [currentUser, setCurrentUser] = useState(null); 
 
-const INIT_UNITS=[
-  {id:'1A',owner:'陳大文',share:10.00},{id:'1B',owner:'李小華',share:9.50},
-  {id:'2A',owner:'張美玲',share:10.00},{id:'2B',owner:'黃偉明',share:9.50},
-  {id:'3A',owner:'劉志強',share:10.00},{id:'3B',owner:'吳麗珍',share:9.50},
-  {id:'4A',owner:'鄭國雄',share:10.00},{id:'4B',owner:'林翠芳',share:9.50},
-  {id:'5A',owner:'何建國',share:11.00},{id:'5B',owner:'梁淑儀',share:11.00},
-].map(u=>({...u,status:'absent',proxyType:null,proxyToOwnerId:null,password:DEFAULT_PW,verified:false,ballotType:'online'}));
+      // 本地單機狀態管理
+      const [meetingStatus, setMeetingStatus] = useState('pending');
+      const [units, setUnits] = useState(fallbackUnits);
+      const [agendas, setAgendas] = useState([]);
+      const [votes, setVotes] = useState({});
+      
+      const [adminTab, setAdminTab] = useState('registry');
+      const [userSelectedAgenda, setUserSelectedAgenda] = useState(null);
+      const [loginModal, setLoginModal] = useState({ isOpen: false, targetId: null, type: '', name: '' });
+      const [loginPin, setLoginPin] = useState('');
+      const [loginError, setLoginError] = useState('');
+      const [showReport, setShowReport] = useState(false); 
 
-// ── UI ──
-const Badge=({children,color='gray'})=>{
-  const c={blue:'bg-blue-100 text-blue-800',green:'bg-green-100 text-green-800',red:'bg-red-100 text-red-700',yellow:'bg-yellow-100 text-yellow-800',gray:'bg-slate-100 text-slate-600',purple:'bg-purple-100 text-purple-800',amber:'bg-amber-100 text-amber-800',orange:'bg-orange-100 text-orange-700'};
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${c[color]||c.gray}`}>{children}</span>;
-};
-const Bar=({pct,color='blue'})=>{
-  const c={blue:'bg-blue-500',green:'bg-green-500',red:'bg-red-400',yellow:'bg-yellow-400',slate:'bg-slate-400'};
-  return <div className="w-full bg-slate-100 rounded-full h-2"><div className={`${c[color]} h-2 rounded-full transition-all duration-500`} style={{width:`${Math.min(100,Math.max(0,pct))}%`}}/></div>;
-};
-const Spinner=()=><div className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"/>;
-const MeetingMeta=({meeting,light=false})=>{
-  const s=light?'text-slate-400':'text-slate-500';
-  const parts=[];
-  if(meeting.date)parts.push(`📅 ${meeting.date}`);
-  if(meeting.time)parts.push(`🕐 ${meeting.time}`);
-  if(meeting.location)parts.push(`📍 ${meeting.location}`);
-  if(!parts.length)return null;
-  return <p className={`text-xs mt-0.5 ${s}`}>{parts.join('　·　')}</p>;
-};
+      const [newUnitData, setNewUnitData] = useState({ unit: '', owner: '', valuePercent: '' });
+      const [newAgendaTitle, setNewAgendaTitle] = useState('');
+      const [newAgendaType, setNewAgendaType] = useState('general_15');
+      const fileInputRef = useRef(null);
 
-const calcResult=(a,confirmedUnits,votes,totalShare)=>{
-  const av=votes[a.id]||{};let yes=0,no=0,abs=0;
-  confirmedUnits.forEach(u=>{const v=av[u.id];if(v==='yes')yes+=u.share;else if(v==='no')no+=u.share;else if(v==='abs')abs+=u.share;});
-  const yp=totalShare>0?yes/totalShare*100:0,np=totalShare>0?no/totalShare*100:0,ap=totalShare>0?abs/totalShare*100:0;
-  let passed=false;
-  if(a.threshold==='general')passed=yes>no&&yp>=15;
-  if(a.threshold==='special')passed=yes>no&&yp>=25;
-  if(a.threshold==='majority')passed=yp>50;
-  if(a.threshold==='renovation')passed=yp>=66.67;
-  return{yp,np,ap,passed};
-};
+      // --- 計算屬性 ---
+      const attendanceStats = useMemo(() => {
+        let confirmedPercent = 0;
+        let confirmedCount = 0;
+        units.forEach(u => {
+          if (u.isConfirmed && u.status !== 'absent') {
+            confirmedCount++;
+            confirmedPercent += u.valuePercent;
+          }
+        });
+        return {
+          confirmedCount,
+          confirmedPercent: confirmedPercent.toFixed(2),
+          canHoldMeeting: confirmedPercent >= 15 
+        };
+      }, [units]);
 
-// ── Law Browser ──
-const LawBrowser=({onBack,backLabel='← 返回'})=>{
-  const [search,setSearch]=useState('');
-  const [category,setCategory]=useState('');
-  const categories=useMemo(()=>[...new Set(LAWS_COMPLETE.map(l=>l.category))],[]);
-  const filtered=useMemo(()=>{
-    let result=LAWS_COMPLETE;
-    if(category)result=result.filter(l=>l.category===category);
-    if(search)result=result.filter(l=>l.art.includes(search)||l.title.includes(search)||l.fulltext.includes(search));
-    return result;
-  },[category,search]);
+      const confirmedNonOwnerProxies = useMemo(() => {
+        const proxies = [];
+        const map = new Set();
+        units.forEach(u => {
+          if (u.status === 'proxy' && u.proxyType === 'non_owner' && u.isConfirmed && u.proxyNonOwner?.idCard) {
+            if (!map.has(u.proxyNonOwner.idCard)) {
+              map.add(u.proxyNonOwner.idCard);
+              proxies.push(u.proxyNonOwner);
+            }
+          }
+        });
+        return proxies;
+      }, [units]);
 
-  return(
-    <div className="min-h-screen bg-slate-50">
-      <div className="bg-slate-800 text-white px-4 py-3 flex items-center gap-3">
-        <button onClick={onBack} className="text-slate-300 hover:text-white text-sm">{backLabel}</button>
-        <span className="font-semibold">{LAW} — 法律檢索</span>
-      </div>
-      <div className="max-w-3xl mx-auto p-5">
-        <div className="mb-5 flex gap-3 flex-col">
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索文章或關鍵字..." className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500"/>
-          <div className="flex flex-wrap gap-2">
-            <button onClick={()=>setCategory('')} className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${category===''?'bg-blue-600 text-white':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>全部分類</button>
-            {categories.map(cat=>(
-              <button key={cat} onClick={()=>setCategory(cat)} className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${category===cat?'bg-blue-600 text-white':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>{cat}</button>
-            ))}
-          </div>
-        </div>
-        <div className="space-y-4">
-          {filtered.map(law=>(
-            <div key={law.art} className="bg-white border border-slate-200 rounded-lg p-4">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="font-bold text-slate-800">{law.art} {law.title}</div>
-                  <div className="text-xs text-slate-500 mt-0.5"><Badge color="blue">{law.category}</Badge></div>
-                </div>
-              </div>
-              <p className="text-slate-700 text-sm leading-relaxed">{law.fulltext}</p>
-            </div>
-          ))}
-          {filtered.length===0&&<div className="text-center text-slate-500 py-8">未找到相關條文</div>}
-        </div>
-      </div>
-    </div>
-  );
-};
+      const getAgendaStats = (agendaId) => {
+        const agendaVotes = votes[agendaId] || {};
+        const agendaDef = agendas.find(a => a.id === agendaId);
+        if (!agendaDef) return null;
 
-// ── Law View ──
-const LawView=({onBack,backLabel='← 返回'})=>{
-  const [tab,setTab]=useState('thresholds');
-  return(
-    <div className="min-h-screen bg-slate-50">
-      <div className="bg-slate-800 text-white px-4 py-3 flex items-center gap-3">
-        <button onClick={onBack} className="text-slate-300 hover:text-white text-sm">{backLabel}</button>
-        <span className="font-semibold">{LAW} 法律參考</span>
-      </div>
-      <div className="bg-white border-b border-slate-200 px-4">
-        <div className="flex">
-          {[{id:'thresholds',label:'決議門檻'},{id:'browser',label:'完整法律檢索'}].map(t=>(
-            <button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${tab===t.id?'border-blue-600 text-blue-600':'border-transparent text-slate-500 hover:text-slate-700'}`}>{t.label}</button>
-          ))}
-        </div>
-      </div>
-      <div className="max-w-2xl mx-auto p-5">
-        {tab==='thresholds'&&<div className="space-y-4">
-          {Object.entries(THRESHOLDS).map(([k,v])=>(
-            <div key={k} className="bg-white border border-slate-200 rounded-lg p-4">
-              <div className="font-bold text-slate-800 mb-2">{v.label} ({v.pct})</div>
-              <div className="text-xs text-slate-600 mb-2">{v.law}</div>
-              <p className="text-sm text-slate-700 mb-2">{v.fulltext}</p>
-              <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded"><strong>簡述：</strong> {v.desc}</div>
-              <div className="text-xs text-slate-600 bg-slate-50 p-2 rounded mt-2"><strong>例子：</strong> {v.eg}</div>
-            </div>
-          ))}
-        </div>}
-        {tab==='browser'&&<div><LawBrowser onBack={()=>setTab('thresholds')} backLabel='← 返回決議門檻'/></div>}
-      </div>
-    </div>
-  );
-};
+        let forPercent = 0, againstPercent = 0, abstainPercent = 0;
+        units.filter(u => u.isConfirmed && u.status !== 'absent').forEach(u => {
+          const v = agendaVotes[u.id];
+          if (v === 'for') forPercent += u.valuePercent;
+          else if (v === 'against') againstPercent += u.valuePercent;
+          else if (v === 'abstain') abstainPercent += u.valuePercent;
+        });
 
-export default function App(){
-  const [view,setView]=useState('home');
-  const [subView,setSubView]=useState(null);
-  const [adminTab,setAdminTab]=useState('roster');
-  const [meeting,setMeeting]=useState({title:'',date:'',time:'',location:'',notes:''});
-  const [units,setUnits]=useState(INIT_UNITS);
-  const [newU,setNewU]=useState({id:'',owner:'',share:''});
-  const [newA,setNewA]=useState({title:'',threshold:'general'});
-  const [agendas,setAgendas]=useState([]);
-  const [presetAgendas,setPresetAgendas]=useState([]);
-  const [presetSelection,setPresetSelection]=useState({});
-  const [agendaStages,setAS]=useState({});
-  const [votes,setVotes]=useState({});
-  const [adminPw,setAdminPw]=useState('');
-  const [loginId,setLoginId]=useState('');
-  const [loginPw,setLoginPw]=useState('');
-  const [loginErr,setLoginErr]=useState('');
-  const [status,setStatus]=useState('pending');
-  const [clock,setClock]=useState(fmtNow());
-  const csvRef=useRef(null);
+        let isPassed = false;
+        if (agendaDef.type === 'general_15') isPassed = (forPercent > againstPercent) && (forPercent >= 15);
+        else if (agendaDef.type === 'special_25') isPassed = (forPercent > againstPercent) && (forPercent >= 25);
+        else if (agendaDef.type === 'special_50') isPassed = forPercent > 50;
+        else if (agendaDef.type === 'special_66') isPassed = forPercent >= (200 / 3);
 
-  useEffect(()=>{const ti=setInterval(()=>setClock(fmtNow()),1000);return()=>clearInterval(ti);},[]);
+        return {
+          forPercent: forPercent.toFixed(2),
+          againstPercent: againstPercent.toFixed(2),
+          abstainPercent: abstainPercent.toFixed(2),
+          isPassed,
+          rule: thresholdRules[agendaDef.type]
+        };
+      };
 
-  const clockStr=clock.slice(11,19);
-  const confirmedUnits=units.filter(u=>u.verified);
-  const totalShare=units.reduce((s,u)=>s+u.share,0);
-  const confShare=confirmedUnits.reduce((s,u)=>s+u.share,0);
-  const confPct=totalShare>0?confShare/totalShare*100:0;
-  const quorum=confPct>=15;
+      const controlledUnits = useMemo(() => {
+        if (currentView !== 'user' || !currentUser) return [];
+        if (currentUser.startsWith('PROXY_')) {
+          const idCard = currentUser.replace('PROXY_', '');
+          return units.filter(u => u.isConfirmed && u.status === 'proxy' && u.proxyType === 'non_owner' && u.proxyNonOwner.idCard === idCard);
+        } else {
+          return units.filter(u => {
+            if (!u.isConfirmed) return false;
+            if (u.id === currentUser && u.status === 'present') return true;
+            if (u.status === 'proxy' && u.proxyType === 'owner' && u.proxyToOwnerId === currentUser) return true;
+            return false;
+          });
+        }
+      }, [currentUser, units, currentView]);
 
-  const adminLogin=()=>{if(adminPw==='0000'){setView('admin');setAdminPw('');}else alert('密碼錯誤');};
-  const userLogin=()=>{const u=units.find(x=>x.id===loginId.trim().toUpperCase());if(!u){setLoginErr('單位不存在');return;}if(u.password!==loginPw){setLoginErr('密碼錯誤');return;}setView('user');setLoginId('');setLoginPw('');};
+      // --- 操作事件 ---
+      const handleBackToHome = () => { setCurrentView('home'); setCurrentUser(null); setShowReport(false); };
 
-  const updateNotes=(id,notes)=>setAS(p=>({...p,[id]:{...(p[id]||initSD()),notes}}));
+      const handleOpenLogin = (id, type, name) => {
+        setLoginModal({ isOpen: true, targetId: id, type, name });
+        setLoginPin(''); setLoginError('');
+      };
 
-  const addUnit=()=>{const id=newU.id.trim().toUpperCase();if(!id||!newU.owner.trim()||!newU.share)return;if(units.find(u=>u.id===id))return alert('單位編號已存在');setUnits(p=>[...p,{id,owner:newU.owner.trim(),share:parseFloat(newU.share),status:'absent',proxyType:null,proxyToOwnerId:null,password:DEFAULT_PW,verified:false,ballotType:'online'}]);setNewU({id:'',owner:'',share:''});};
-  const addAgenda=()=>{if(!newA.title.trim())return;const id=mkId();setAgendas(p=>[...p,{id,title:newA.title.trim(),threshold:newA.threshold}]);setAS(p=>({...p,[id]:initSD()}));setNewA({title:'',threshold:'general'});};
-  const loadPreset=(type)=>{
-    const nag=PRESETS[type].agendas.map(a=>({id:mkId(),...a}));
-    setPresetAgendas(nag);
-    const sel={};nag.forEach(a=>{sel[a.id]=true;});
-    setPresetSelection(sel);
-  };
-  const importCSV=(e)=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{const imp=[];ev.target.result.split('\n').slice(1).forEach(l=>{const[id,owner,share]=l.split(',').map(s=>s.trim());if(id&&owner&&share&&!units.find(u=>u.id===id.toUpperCase()))imp.push({id:id.toUpperCase(),owner,share:parseFloat(share),status:'absent',proxyType:null,proxyToOwnerId:null,password:DEFAULT_PW,verified:false,ballotType:'online'});});setUnits(p=>[...p,...imp]);alert(`已成功匯入 ${imp.length} 個單位`);};r.readAsText(file);e.target.value='';};
+      const handleLoginSubmit = () => {
+        if (loginModal.type === 'owner') {
+          const unit = units.find(u => u.id === loginModal.targetId);
+          if (!unit.isConfirmed) { setLoginError('尚未經管委會核實'); return; }
+          if (!unit.ownerIdCardLast4 || loginPin !== unit.ownerIdCardLast4) { setLoginError('密碼錯誤'); return; }
+          setCurrentUser(unit.id); setCurrentView('user');
+        } else {
+          const proxy = confirmedNonOwnerProxies.find(p => p.idCard === loginModal.targetId);
+          if (!proxy || loginPin !== proxy.idCard.slice(-4)) { setLoginError('密碼錯誤'); return; }
+          setCurrentUser(`PROXY_${proxy.idCard}`); setCurrentView('user');
+        }
+        setUserSelectedAgenda(agendas[0]?.id);
+        setLoginModal({ isOpen: false, targetId: null, type: '', name: '' });
+      };
 
-  const canStart=quorum&&agendas.length>0&&meeting.title.trim()&&meeting.date.trim()&&meeting.time.trim()&&meeting.location.trim();
-  const startBlockReason=()=>{if(!meeting.title.trim())return'請先填寫大會全稱';if(!meeting.date.trim())return'請先填寫召開日期';if(!meeting.time.trim())return'請先填寫召開時間';if(!meeting.location.trim())return'請先填寫會議地點';if(agendas.length===0)return'請先設定議程';if(!quorum)return`出席份額${confPct.toFixed(1)}%未達15%`;return null;};
+      const handleShowReport = () => {
+        setMeetingStatus('ended');
+        setTimeout(() => { setShowReport(true); }, 500);
+      };
 
-  const exportResultPDF=()=>{const w=window.open('','_blank');w.document.write(buildPDF(meeting,agendas,agendaStages,votes,confirmedUnits,totalShare));w.document.close();};
-  const exportResultCSV=()=>{let rows='議案,單位,業主姓名,份額(%),投票\n';agendas.forEach(a=>confirmedUnits.forEach(u=>{const v=(votes[a.id]||{})[u.id]||'—';rows+=`"${a.title}",${u.id},"${u.owner}",${u.share.toFixed(2)},${v==='yes'?'贊成':v==='no'?'反對':v==='abs'?'棄權':'未投票'}\n`;}));const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+rows],{type:'text/csv'}));a.download='投票記錄.csv';a.click();};
+      const handlePrint = () => { window.print(); };
 
-  const ADMIN_TABS=[{id:'roster',label:'📋 業主名冊'},{id:'attendance',label:'✅ 出席登記'},{id:'agenda',label:'📄 議程管理'},{id:'control',label:'🔔 會議控制'},{id:'export',label:'📤 匯出'},{id:'law',label:'📖 法律參考'},...(status==='ended'?[{id:'summary',label:'🏁 大會總結',hl:true}]:[])];
-  const OWNER_TABS=[{id:'vote',label:'🗳 投票'},{id:'export',label:'📊 結果匯出'},{id:'law',label:'📖 法律參考'}];
+      const clearDatabase = () => {
+        if(!confirm('警告：確定要刪除所有資料嗎？此操作無法復原。')) return;
+        setUnits([]);
+        setAgendas([]);
+        setVotes({});
+        setMeetingStatus('pending');
+        alert("資料已清空！");
+        setShowReport(false);
+      };
 
-  // ════ SHARED LAW VIEW ════
-  if(view==='law_page')return <LawView onBack={()=>setView('home')}/>;
+      const handleAddUnit = () => {
+        if (!newUnitData.unit) return;
+        const newId = 'U' + Date.now();
+        const data = { 
+          id: newId,
+          unit: newUnitData.unit, owner: newUnitData.owner, valuePercent: parseFloat(newUnitData.valuePercent) || 0, 
+          status: 'absent', proxyType: 'none', proxyToOwnerId: '', proxyNonOwner: { name: '', idCard: '', phone: '' }, isConfirmed: false, ownerIdCardLast4: '' 
+        };
+        setUnits(prev => [...prev, data]);
+        setNewUnitData({ unit: '', owner: '', valuePercent: '' });
+      };
 
-  // ════ HOME ════
-  if(view==='home')return(
-    <div className="min-h-screen bg-slate-900 flex flex-col">
-      <div className="bg-slate-800 border-b border-slate-700 px-6 py-4">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white text-xl">業</div>
-            <div><div className="text-white font-bold text-lg">澳門業主大會管理與投票系統</div><div className="text-slate-400 text-xs">依據{LAW.split('《')[1].split('》')[0]}設計</div></div>
-          </div>
-          <div className="text-right hidden md:block"><div className="text-green-400 font-mono text-sm">{clockStr}</div><div className="text-slate-500 text-xs">系統時間</div></div>
-        </div>
-      </div>
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="max-w-2xl w-full">
-          <div className="text-center mb-8">
-            <h2 className="text-white text-2xl font-bold">{meeting.title}</h2>
-            <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">
-              {meeting.date&&meeting.time&&<span className="text-slate-300 text-sm">📅 {meeting.date}　🕐 {meeting.time}</span>}
-              {meeting.location&&<span className="text-slate-300 text-sm">📍 {meeting.location}</span>}
-            </div>
-            {meeting.notes&&<p className="text-slate-400 text-xs mt-1">備註：{meeting.notes}</p>}
-            <p className="text-slate-500 text-sm mt-3">請選擇您的身份登入</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4">
-            <div className="bg-slate-800 border border-slate-600 rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1"><div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm">⚙</div><span className="text-white font-semibold">管理委員會</span></div>
-              <p className="text-slate-400 text-xs mb-4">業主名冊、出席登記、議程控制及匯出</p>
-              <input type="password" placeholder="管理員密碼" value={adminPw} onChange={e=>setAdminPw(e.target.value)} onKeyDown={e=>e.key==='Enter'&&adminLogin()} className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:border-blue-400"/>
-              <button onClick={adminLogin} className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-sm font-medium transition-colors">管理員登入</button>
-              <p className="text-slate-500 text-xs text-center mt-2">預設密碼：0000</p>
-            </div>
-            <div className="bg-slate-800 border border-slate-600 rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-1"><div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white text-sm">👤</div><span className="text-white font-semibold">業主 / 授權代理人</span></div>
-              <p className="text-slate-400 text-xs mb-4">親身出席業主或授權代理人，均以單位號碼登入</p>
-              {(()=>{
-                const eligible=units.filter(u=>u.verified&&u.status!=='absent');
-                const filtered=loginId.trim()===''?eligible:eligible.filter(u=>u.id.toUpperCase().includes(loginId.trim().toUpperCase())||u.owner.includes(loginId.trim()));
-                const exact=eligible.find(u=>u.id===loginId.trim().toUpperCase());
-                return(<>
-                  <div className="relative mb-2">
-                    <input type="text" placeholder="輸入單位號碼（如：1A）" value={loginId} onChange={e=>{setLoginId(e.target.value);setLoginErr('');}}
-                      className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-400" autoComplete="off"/>
-                    {loginId.length>0&&!exact&&filtered.length>0&&(
-                      <div className="absolute z-10 left-0 right-0 mt-1 bg-slate-700 border border-slate-500 rounded-xl overflow-hidden shadow-xl max-h-40 overflow-y-auto">
-                        {filtered.map(u=>(
-                          <button key={u.id} onClick={()=>setLoginId(u.id)}
-                            className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-600 text-left transition-colors">
-                            <span className="font-mono font-bold text-emerald-400 w-10 shrink-0">{u.id}</span>
-                            <span className="text-white text-sm flex-1 truncate">{u.owner}</span>
-                            <span className="text-slate-400 text-xs shrink-0">{u.share.toFixed(1)}%</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {eligible.length===0&&<p className="text-amber-400 text-xs mt-1">尚無已核實業主，請聯絡管委會。</p>}
-                  </div>
-                  <input type="password" placeholder="登入密碼（預設：1111）" value={loginPw} onChange={e=>setLoginPw(e.target.value)} onKeyDown={e=>e.key==='Enter'&&userLogin()}
-                    className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:border-emerald-400"/>
-                  {loginErr&&<p className="text-red-400 text-xs mb-2">{loginErr}</p>}
-                  <button onClick={userLogin} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg py-2 text-sm font-medium transition-colors">登入</button>
-                  <p className="text-slate-500 text-xs text-center mt-2">非業主代理人亦使用所代理之單位號碼登入</p>
-                </>);
-              })()}
-            </div>
-          </div>
-          <div className="flex justify-center">
-            <button onClick={()=>setView('law_page')} className="text-slate-400 hover:text-slate-200 text-sm underline">📖 法律條文參考</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+      const handleDeleteUnit = (id) => {
+        setUnits(prev => prev.filter(u => u.id !== id));
+      };
 
-  // ════ ADMIN ════
-  if(view==='admin'){
-    if(subView==='law')return <LawView onBack={()=>setSubView(null)} backLabel='← 返回後台'/>;
-    return(
-    <div className="min-h-screen bg-slate-50">
-      <div className="bg-slate-800 text-white px-4 py-2 flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-sm">業</div>
-          <div><span className="font-semibold text-sm">{meeting.title} — 管委會後台</span><MeetingMeta meeting={meeting} light/></div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="text-green-400 font-mono text-xs bg-slate-900 px-2.5 py-1 rounded-lg">🕐 {clockStr}</div>
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${quorum?'bg-green-600':'bg-amber-500'}`}>出席 {confPct.toFixed(1)}% {quorum?'✅':'⚠️'}</span>
-          <span className={`text-xs px-2.5 py-1 rounded-full ${status==='pending'?'bg-slate-600':status==='started'?'bg-green-600':'bg-red-700'}`}>{status==='pending'?'待開會':status==='started'?'● 進行中':'已結束'}</span>
-          <button onClick={()=>setSubView('law')} className="text-slate-300 hover:text-white text-xs border border-slate-600 px-2 py-1 rounded">📖 法律</button>
-          <button onClick={()=>setView('home')} className="text-slate-300 hover:text-white text-xs border border-slate-600 px-2 py-1 rounded">← 首頁</button>
-        </div>
-      </div>
-      <div className="bg-white border-b border-slate-200 px-2 overflow-x-auto">
-        <div className="flex min-w-max">{ADMIN_TABS.map(t=>(<button key={t.id} onClick={()=>setAdminTab(t.id)} className={`px-4 py-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${adminTab===t.id?'border-blue-600 text-blue-600':'border-transparent text-slate-500 hover:text-slate-700'} ${t.hl?'text-green-600 font-semibold':''}`}>{t.label}</button>))}</div>
-      </div>
-      <div className="p-4 max-w-5xl mx-auto">
+      const handleFileUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          const text = evt.target.result;
+          const rows = text.split('\n');
+          const newUnits = [];
+          rows.forEach((row, index) => {
+            if (index === 0 || !row.trim()) return; 
+            const cols = row.split(',');
+            if (cols.length >= 3) {
+              newUnits.push({
+                id: 'U' + Date.now() + index, unit: cols[0].trim(), owner: cols[1].trim(),
+                valuePercent: parseFloat(cols[2].trim()) || 0,
+                status: 'absent', proxyType: 'none', proxyToOwnerId: '', proxyNonOwner: { name: '', idCard: '', phone: '' }, isConfirmed: false, ownerIdCardLast4: ''
+              });
+            }
+          });
+          if(newUnits.length > 0) {
+            setUnits(prev => [...prev, ...newUnits]);
+            alert(`成功匯入 ${newUnits.length} 筆業主資料！`);
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = null; 
+      };
 
-        {/* ROSTER */}
-        {adminTab==='roster'&&<div>
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <h2 className="font-semibold text-slate-800">業主名冊管理</h2>
-            <div className="flex gap-2 items-center">
-              <input ref={csvRef} type="file" accept=".csv" onChange={importCSV} className="hidden"/>
-              <button onClick={()=>csvRef.current.click()} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg">📥 CSV 匯入</button>
-              <button onClick={()=>{const blob=new Blob(['\uFEFF單位號碼,業主姓名,份額(%)\n'+units.map(u=>`${u.id},${u.owner},${u.share.toFixed(2)}`).join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='業主名冊.csv';a.click();}} className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg">📤 CSV 匯出</button>
-              <span className="text-slate-400 text-xs">{units.length} 單位｜{totalShare.toFixed(2)}%</span>
-            </div>
-          </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-amber-800 text-xs">CSV 格式：<code className="bg-amber-100 px-1 rounded">單位號碼, 業主姓名, 份額(%)</code>　｜　預設密碼：<strong>{DEFAULT_PW}</strong></div>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-3">
-            <p className="text-blue-700 font-medium text-xs mb-2">新增單位</p>
-            <div className="flex gap-2 flex-wrap">
-              <input value={newU.id} onChange={e=>setNewU(p=>({...p,id:e.target.value}))} placeholder="單位號碼" className="border border-slate-300 rounded px-3 py-1.5 text-sm w-24"/>
-              <input value={newU.owner} onChange={e=>setNewU(p=>({...p,owner:e.target.value}))} placeholder="業主姓名" className="border border-slate-300 rounded px-3 py-1.5 text-sm flex-1 min-w-32"/>
-              <input value={newU.share} onChange={e=>setNewU(p=>({...p,share:e.target.value}))} type="number" step="0.01" placeholder="份額(%)" className="border border-slate-300 rounded px-3 py-1.5 text-sm w-28"/>
-              <button onClick={addUnit} className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">新增</button>
-            </div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b text-xs text-slate-500 uppercase tracking-wide"><tr><th className="text-left px-4 py-2.5">單位</th><th className="text-left px-4 py-2.5">業主</th><th className="text-right px-4 py-2.5">份額</th><th className="text-center px-4 py-2.5">狀態</th><th className="text-center px-4 py-2.5">核驗</th><th className="text-center px-4 py-2.5">操作</th></tr></thead>
-              <tbody>{units.map((u,i)=>(<tr key={u.id} className={`border-b border-slate-100 ${i%2===0?'':'bg-slate-50/40'}`}><td className="px-4 py-2.5 font-mono font-bold text-slate-800">{u.id}</td><td className="px-4 py-2.5 text-slate-700">{u.owner}</td><td className="px-4 py-2.5 text-right text-slate-500">{u.share.toFixed(2)}%</td><td className="px-4 py-2.5 text-center">{u.status==='absent'?<Badge>缺席</Badge>:u.status==='present'?<Badge color="green">親身</Badge>:u.proxyType==='owner'?<Badge color="blue">→{u.proxyToOwnerId}</Badge>:<Badge color="purple">非業主代理</Badge>}</td><td className="px-4 py-2.5 text-center">{u.verified?'✅':'—'}</td><td className="px-4 py-2.5 text-center"><button onClick={()=>setUnits(p=>p.filter(x=>x.id!==u.id))} className="text-red-400 hover:text-red-600 text-xs">刪除</button></td></tr>))}</tbody>
-            </table>
-          </div>
-        </div>}
+      const handleUnitUpdateCloud = (id, field, value) => {
+        setUnits(prev => prev.map(u => {
+          if (u.id === id) {
+            const updated = { ...u, [field]: value };
+            if (field === 'status') {
+              updated.isConfirmed = false;
+              if (value === 'absent') { updated.proxyType = 'none'; updated.ownerIdCardLast4 = ''; }
+              else if (value === 'proxy' && updated.proxyType === 'none') { updated.proxyType = 'owner'; }
+            }
+            if (field === 'proxyType' || field === 'proxyToOwnerId') updated.isConfirmed = false;
+            return updated;
+          }
+          return u;
+        }));
+      };
 
-        {/* ATTENDANCE */}
-        {adminTab==='attendance'&&<div>
-          <h2 className="font-semibold text-slate-800 mb-3">出席身份登記</h2>
-          <div className="space-y-3">{units.map(u=>(
-            <div key={u.id} className="bg-white border border-slate-200 rounded-lg p-3">
-              <div className="flex items-center justify-between flex-wrap gap-2">
-                <div className="flex items-center gap-3 flex-1">
-                  <div className="font-mono font-bold text-blue-600 w-10">{u.id}</div>
-                  <div className="flex-1 min-w-0"><div className="font-medium text-slate-800">{u.owner}</div><div className="text-xs text-slate-500">{u.share.toFixed(2)}%</div></div>
-                </div>
-                <select value={u.status} onChange={e=>setUnits(p=>p.map(x=>x.id===u.id?{...x,status:e.target.value}:x))} className="border border-slate-300 rounded px-3 py-1.5 text-sm">
-                  <option value="absent">缺席</option>
-                  <option value="present">親身出席</option>
-                  <option value="proxy_owner">業主代理</option>
-                  <option value="proxy_other">非業主代理</option>
-                </select>
-                {(u.status==='proxy_owner'||u.status==='proxy_other')&&(
-                  <select value={u.proxyToOwnerId||''} onChange={e=>setUnits(p=>p.map(x=>x.id===u.id?{...x,proxyToOwnerId:e.target.value}:x))} className="border border-slate-300 rounded px-3 py-1.5 text-sm">
-                    <option value="">代理給...</option>
-                    {units.filter(x=>x.id!==u.id).map(x=><option key={x.id} value={x.id}>{x.id} - {x.owner}</option>)}
-                  </select>
-                )}
-                <button onClick={()=>setUnits(p=>p.map(x=>x.id===u.id?{...x,verified:!x.verified}:x))} className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${u.verified?'bg-green-600 text-white':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>{u.verified?'✅ 已核驗':'核驗'}</button>
+      const handleNonOwnerProxyUpdateCloud = (id, field, value) => {
+        setUnits(prev => prev.map(u => u.id === id ? { ...u, proxyNonOwner: { ...u.proxyNonOwner, [field]: value }, isConfirmed: false } : u));
+      };
+
+      const handleAddAgenda = () => {
+        if (!newAgendaTitle.trim()) return;
+        const newId = 'A' + Date.now();
+        setAgendas(prev => [...prev, { id: newId, title: newAgendaTitle, type: newAgendaType }]);
+        setNewAgendaTitle('');
+      };
+
+      const handleVote = (agendaId, unitId, voteType) => {
+        if (meetingStatus !== 'started') return;
+        setVotes(prev => ({
+          ...prev,
+          [agendaId]: {
+            ...(prev[agendaId] || {}),
+            [unitId]: voteType
+          }
+        }));
+      };
+
+      const TopNavBar = ({ title, subtitle, icon: IconComponent, showAdminStats }) => (
+        <header className="bg-slate-800 text-white p-4 shadow-md sticky top-0 z-10 no-print">
+          <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <IconComponent className="w-6 h-6 text-blue-400" />
+              <div>
+                <h1 className="text-lg font-bold">{title}</h1>
+                <p className="text-xs text-slate-300">{subtitle}</p>
               </div>
             </div>
-          ))}</div>
-        </div>}
-
-        {/* AGENDA */}
-        {adminTab==='agenda'&&<div>
-          <h2 className="font-semibold text-slate-800 mb-3">議程管理</h2>
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
-            <p className="text-blue-700 font-medium text-xs mb-3">快速載入預設議程</p>
-            <div className="flex gap-2 flex-wrap">
-              {Object.entries(PRESETS).map(([k,p])=>(
-                <button key={k} onClick={()=>loadPreset(k)} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">{p.label}</button>
-              ))}
+            <div className="flex items-center gap-4">
+              {showAdminStats && (
+                <div className="hidden md:block bg-slate-700 px-4 py-1.5 rounded-lg border border-slate-600 text-sm">
+                  已確認出席：<span className={`text-lg font-bold ${attendanceStats.canHoldMeeting ? 'text-green-400' : 'text-red-400'}`}>{attendanceStats.confirmedPercent}%</span>
+                </div>
+              )}
+              <button onClick={handleBackToHome} className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-sm font-medium transition-colors border border-slate-600">
+                <ArrowLeft className="w-4 h-4" /> 回首頁
+              </button>
             </div>
-            {presetAgendas.length>0&&(
-              <div className="mt-4 pt-4 border-t border-blue-300">
-                <p className="text-blue-700 font-medium text-xs mb-2">選擇要加入的議程（可取消勾選）</p>
-                <div className="space-y-2">
-                  {presetAgendas.map(a=>(
-                    <label key={a.id} className="flex items-center gap-2 cursor-pointer">
-                      <input type="checkbox" checked={presetSelection[a.id]||false} onChange={e=>setPresetSelection(p=>({...p,[a.id]:e.target.checked}))} className="w-4 h-4"/>
-                      <span className="text-sm text-slate-700">{a.title} <span className="text-xs text-slate-500">({THRESHOLDS[a.threshold].label})</span></span>
-                    </label>
+          </div>
+        </header>
+      );
+
+      const ProgressBar = ({ forP, againstP, abstainP }) => (
+        <div className="flex h-3 w-full bg-slate-200 rounded-full overflow-hidden mt-1">
+          <div style={{ width: `${Math.min(forP, 100)}%` }} className="bg-green-500 transition-all"></div>
+          <div style={{ width: `${Math.min(againstP, 100)}%` }} className="bg-red-500 transition-all"></div>
+          <div style={{ width: `${Math.min(abstainP, 100)}%` }} className="bg-slate-400 transition-all"></div>
+        </div>
+      );
+
+      // --- 視圖 1: 首頁 ---
+      if (currentView === 'home') {
+        return (
+          <div className="min-h-screen bg-slate-100 flex flex-col items-center justify-center p-4">
+            <div className="absolute top-4 right-4">
+              <button onClick={() => setCurrentView('law')} className="flex items-center gap-2 bg-white text-blue-700 px-4 py-2 rounded-full shadow-sm font-bold border border-blue-200">
+                <BookOpen className="w-5 h-5" /> 相關法律
+              </button>
+            </div>
+            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md my-8 border-t-4 border-blue-600">
+              <div className="text-center mb-6">
+                <div className="bg-blue-600 p-3 rounded-full inline-block mb-3 shadow-md"><Users className="w-8 h-8 text-white" /></div>
+                <h1 className="text-2xl font-bold text-slate-800">分層建築物所有人大會<br/>單機會議系統</h1>
+                <p className="text-slate-500 text-sm mt-2">依據《第14/2017號法律》標準</p>
+                <p className="text-xs text-amber-600 font-bold mt-2">● 目前為前端單機測試模式 (無雲端連線)</p>
+              </div>
+
+              {/* 首頁法律提示 */}
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-3 rounded-lg text-xs mb-6 text-left shadow-sm">
+                <p className="font-bold mb-1 flex items-center gap-1"><AlertCircle className="w-4 h-4" /> 【法律聲明】第14/2017號法律</p>
+                <ul className="list-disc pl-4 space-y-1 mt-2">
+                  <li>會議出席及投票僅限業主、已登記用益權人或預約取得人(或其合法授權人)。</li>
+                  <li>登入即表示您同意本系統依據上述法律進行身份核實與選票記錄。</li>
+                </ul>
+              </div>
+
+              <div className="space-y-4">
+                <button onClick={() => { setCurrentView('admin'); setAdminTab('registry'); }} className="w-full py-4 px-4 bg-slate-800 text-white rounded-xl font-bold flex justify-center gap-2">
+                  <Settings className="w-5 h-5" /> 管委會登入 (管理員)
+                </button>
+                <div className="relative flex items-center py-4">
+                  <div className="flex-grow border-t"></div><span className="mx-4 text-slate-500 text-sm font-bold">一般業主登入</span><div className="flex-grow border-t"></div>
+                </div>
+                <div className="max-h-[200px] overflow-y-auto grid grid-cols-2 gap-3 custom-scrollbar pr-2">
+                  {units.length === 0 && <p className="col-span-2 text-center text-sm text-slate-400 py-2">請先透過管委會建立名冊</p>}
+                  {units.map(u => (
+                    <button key={u.id} onClick={() => handleOpenLogin(u.id, 'owner', `${u.unit} ${u.owner}`)} className="py-3 px-2 bg-blue-50 text-blue-800 rounded-lg text-sm font-semibold border border-blue-200 hover:bg-blue-100 transition-colors">
+                      {u.unit} <br/><span className="font-normal text-xs text-blue-600">{u.owner}</span>
+                    </button>
                   ))}
                 </div>
-                <button onClick={()=>{const sel=Object.entries(presetSelection).filter(([,v])=>v).map(([id])=>presetAgendas.find(a=>a.id===id)).filter(Boolean);setAgendas(p=>[...p,...sel]);setPresetAgendas([]);setPresetSelection({});}} className="mt-3 bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">確認加入選中議程</button>
+                {confirmedNonOwnerProxies.length > 0 && (
+                  <>
+                    <div className="relative flex items-center py-4">
+                      <div className="flex-grow border-t"></div><span className="mx-4 text-slate-500 text-sm font-bold">非業主代理人登入</span><div className="flex-grow border-t"></div>
+                    </div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {confirmedNonOwnerProxies.map(proxy => (
+                        <button key={proxy.idCard} onClick={() => handleOpenLogin(proxy.idCard, 'non_owner', proxy.name)} className="flex items-center gap-3 py-3 px-4 bg-purple-50 text-purple-800 rounded-lg text-sm font-semibold border border-purple-200 hover:bg-purple-100 transition-colors">
+                          <UserSquare2 className="w-5 h-5 text-purple-500" />
+                          <div className="text-left">{proxy.name}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 密碼視窗 */}
+            {loginModal.isOpen && (
+              <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
+                  <h2 className="text-xl font-bold text-center mb-1">身份驗證</h2>
+                  <p className="text-center text-slate-500 text-sm mb-6">{loginModal.name}</p>
+                  <input type="password" maxLength={4} value={loginPin} onChange={e => setLoginPin(e.target.value.replace(/\D/g, ''))} className="w-full text-center text-3xl tracking-[1em] font-mono py-3 border rounded-xl outline-none" placeholder="••••" />
+                  {loginError && <p className="text-red-500 text-sm mt-2 text-center">{loginError}</p>}
+                  <div className="flex gap-3 mt-6">
+                    <button onClick={() => setLoginModal({ isOpen: false })} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600 hover:bg-slate-200">取消</button>
+                    <button onClick={handleLoginSubmit} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">登入</button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4">
-            <p className="text-slate-700 font-medium text-xs mb-2">新增單項議程</p>
-            <div className="flex gap-2 flex-wrap">
-              <input value={newA.title} onChange={e=>setNewA(p=>({...p,title:e.target.value}))} placeholder="議程名稱" className="border border-slate-300 rounded px-3 py-1.5 text-sm flex-1 min-w-40"/>
-              <select value={newA.threshold} onChange={e=>setNewA(p=>({...p,threshold:e.target.value}))} className="border border-slate-300 rounded px-3 py-1.5 text-sm">
-                {Object.entries(THRESHOLDS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
-              </select>
-              <button onClick={addAgenda} className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">新增</button>
+        );
+      }
+
+      // --- 視圖 2: 法律查詢 ---
+      if (currentView === 'law') {
+        return (
+          <div className="min-h-screen bg-slate-50 pb-10">
+            <TopNavBar title="樓宇管理相關法律查詢" subtitle="澳門特別行政區法規" icon={BookOpen} showAdminStats={false} />
+            <div className="max-w-4xl mx-auto mt-8 px-4 space-y-6">
+              <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-l-blue-600">
+                <h2 className="text-xl font-bold mb-2">第14/2017號法律《分層建築物共同部分的管理法律制度》</h2>
+                <a href="https://bo.io.gov.mo/bo/i/2017/34/lei14_cn.asp" target="_blank" rel="noreferrer" className="text-blue-600 text-sm inline-flex items-center gap-1 mb-4"><ExternalLink className="w-4 h-4"/> 官方公報</a>
+                <p className="text-sm text-slate-600"><strong>第26條 (代理)</strong>: 非業主代理須具備公證認定(認筆跡)授權書；業主代理只需普通簽名及身份證副本。</p>
+                <p className="text-sm text-slate-600 mt-2"><strong>第27條 (出席登記)</strong>: 辦理出席登記時應透過分層建築物所有人或其代理人出示身份證明文件，確認其身份。</p>
+                <p className="text-sm text-slate-600 mt-2"><strong>第29條 (法定份額)</strong>: 決議一般須過半數票且佔總值15%以上；特別決議(如罷免)需25%以上；修改規章需>50%；更新工程需2/3。</p>
+              </div>
             </div>
           </div>
-          {agendas.length>0&&(
-            <div className="space-y-3">
-              <h3 className="font-semibold text-slate-700 text-sm">當前議程列表</h3>
-              {agendas.map((a,i)=>(
-                <div key={a.id} className="bg-white border border-slate-200 rounded-lg p-3">
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div>
-                      <div className="font-medium text-slate-800">{i+1}. {a.title}</div>
-                      <div className="text-xs text-slate-600 mt-0.5">{THRESHOLDS[a.threshold].law} — {THRESHOLDS[a.threshold].desc}</div>
+        );
+      }
+
+      // --- 視圖 3: 報告畫面 ---
+      if (showReport) {
+        return (
+          <div className="min-h-screen bg-slate-100 p-4">
+            <div className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-lg">
+              <div className="flex justify-between items-center mb-6 no-print">
+                <button onClick={() => setShowReport(false)} className="px-4 py-2 bg-slate-200 rounded-lg font-bold">返回管理</button>
+                <div className="space-x-3">
+                  <button onClick={handlePrint} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold inline-flex items-center gap-2"><Printer className="w-4 h-4"/> 列印/儲存PDF</button>
+                  <button onClick={clearDatabase} className="px-4 py-2 bg-red-600 text-white rounded-lg font-bold">清除數據</button>
+                </div>
+              </div>
+              <div id="print-report-container" className="font-serif text-black bg-white p-6">
+                <h1 className="text-3xl font-bold text-center mb-2">分層建築物所有人大會 會議紀錄</h1>
+                <p className="text-center text-gray-600 mb-8 border-b pb-4">產生時間：{new Date().toLocaleString('zh-HK')}</p>
+                <h2 className="text-xl font-bold mb-3">一、 出席情況</h2>
+                <p className="mb-6 leading-relaxed">已依據《第14/2017號法律》第27條核對身份出席（含授權代表）共 <strong>{attendanceStats.confirmedCount}</strong> 戶，佔總值 <strong>{attendanceStats.confirmedPercent}%</strong>。</p>
+                <h2 className="text-xl font-bold mb-4">二、 議程表決結果 (依據第14/2017號法律第29條)</h2>
+                {agendas.map((agenda, i) => {
+                  const stats = getAgendaStats(agenda.id);
+                  return (
+                    <div key={agenda.id} className="mb-6 p-4 border border-gray-300 rounded">
+                      <h3 className="font-bold text-lg mb-1">議程 {i+1}：{agenda.title}</h3>
+                      <p className="text-sm bg-gray-100 p-2 mb-3">法定要求：{stats.rule.desc}</p>
+                      <table className="w-full text-center border-collapse border border-gray-300 mb-3">
+                        <thead>
+                          <tr className="bg-gray-200"><th className="border p-2">贊成(%)</th><th className="border p-2">反對(%)</th><th className="border p-2">棄權(%)</th></tr>
+                        </thead>
+                        <tbody>
+                          <tr><td className="border p-2 font-bold">{stats.forPercent}%</td><td className="border p-2 font-bold">{stats.againstPercent}%</td><td className="border p-2 font-bold">{stats.abstainPercent}%</td></tr>
+                        </tbody>
+                      </table>
+                      <div className="font-bold text-lg">大會宣告：<span className={stats.isPassed?'text-green-700':'text-red-700'}>{stats.isPassed?'依法通過':'不獲通過'}</span></div>
                     </div>
-                    <button onClick={()=>setAgendas(p=>p.filter(x=>x.id!==a.id))} className="text-red-400 hover:text-red-600 text-sm">刪除</button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // --- 視圖 4: 管委會 ---
+      if (currentView === 'admin') {
+        const presentOwners = units.filter(u => u.status === 'present');
+        return (
+          <div className="min-h-screen bg-slate-50 pb-10">
+            <TopNavBar title="管委會控制台" subtitle={`狀態：${meetingStatus}`} icon={Settings} showAdminStats={true} />
+            <div className="max-w-6xl mx-auto mt-6 px-4">
+              <div className="flex space-x-2 mb-4 border-b overflow-x-auto hide-scrollbar">
+                <button onClick={() => setAdminTab('registry')} className={`whitespace-nowrap p-3 font-bold ${adminTab==='registry'?'text-blue-600 border-b-2 border-blue-600':''}`}>業主名冊</button>
+                <button onClick={() => setAdminTab('attendance')} className={`whitespace-nowrap p-3 font-bold ${adminTab==='attendance'?'text-blue-600 border-b-2 border-blue-600':''}`}>身份確認</button>
+                <button onClick={() => setAdminTab('agendas')} className={`whitespace-nowrap p-3 font-bold ${adminTab==='agendas'?'text-blue-600 border-b-2 border-blue-600':''}`}>議程設定</button>
+                <button onClick={() => setAdminTab('dashboard')} className={`whitespace-nowrap p-3 font-bold ${adminTab==='dashboard'?'text-blue-600 border-b-2 border-blue-600':''}`}>大會控制</button>
+              </div>
+
+              {adminTab === 'registry' && (
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-bold">業主名冊</h2>
                   </div>
-                  <textarea value={agendaStages[a.id]?.notes||''} onChange={e=>updateNotes(a.id,e.target.value)} placeholder="備註..." className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs outline-none focus:border-blue-400"/>
+                  
+                  <div className="bg-blue-50 border border-blue-200 text-blue-800 p-3 rounded-lg text-sm mb-6 flex gap-3">
+                    <Info className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold mb-1">【法律提示】分層所有權份額（《民法典》第1318條）</p>
+                      <p>投票權重並非「一戶一票」，而是按樓宇總值百分比計算。請確保輸入之份額與物業登記局設定憑證完全一致。</p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mb-4">
+                    <input type="text" placeholder="單位" value={newUnitData.unit} onChange={e=>setNewUnitData({...newUnitData, unit: e.target.value})} className="border p-2 rounded" />
+                    <input type="text" placeholder="業主" value={newUnitData.owner} onChange={e=>setNewUnitData({...newUnitData, owner: e.target.value})} className="border p-2 rounded" />
+                    <input type="number" placeholder="份額%" value={newUnitData.valuePercent} onChange={e=>setNewUnitData({...newUnitData, valuePercent: e.target.value})} className="border p-2 rounded w-24" />
+                    <button onClick={handleAddUnit} className="bg-blue-600 text-white px-4 py-2 rounded font-bold hover:bg-blue-700">新增</button>
+                    <div className="ml-auto">
+                      <input type="file" accept=".csv" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                      <button onClick={() => fileInputRef.current.click()} disabled={meetingStatus !== 'pending'} className="bg-green-50 text-green-700 border border-green-200 px-4 py-2 rounded font-bold disabled:opacity-50 flex items-center gap-2 hover:bg-green-100"><FileSpreadsheet className="w-4 h-4"/> 批量匯入CSV</button>
+                    </div>
+                  </div>
+                  <table className="w-full text-left border">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="p-2 border-b">單位</th><th className="p-2 border-b">業主</th><th className="p-2 border-b">份額</th><th className="p-2 border-b">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {units.map(u => (
+                        <tr key={u.id} className="border-b hover:bg-slate-50"><td className="p-2">{u.unit}</td><td className="p-2">{u.owner}</td><td className="p-2 text-blue-600 font-mono">{u.valuePercent}%</td>
+                        <td className="p-2"><button onClick={()=>handleDeleteUnit(u.id)} disabled={meetingStatus !== 'pending'} className="text-red-500 hover:bg-red-50 p-1.5 rounded disabled:opacity-30"><Trash2 className="w-4 h-4"/></button></td></tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>}
+              )}
 
-        {/* CONTROL */}
-        {adminTab==='control'&&<div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
-              <label className="text-xs text-slate-600 font-medium">大會全稱</label>
-              <input value={meeting.title} onChange={e=>setMeeting(p=>({...p,title:e.target.value}))} className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400"/>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
-              <label className="text-xs text-slate-600 font-medium">召開日期</label>
-              <input value={meeting.date} onChange={e=>setMeeting(p=>({...p,date:e.target.value}))} type="date" className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400"/>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
-              <label className="text-xs text-slate-600 font-medium">召開時間</label>
-              <input value={meeting.time} onChange={e=>setMeeting(p=>({...p,time:e.target.value}))} type="time" className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400"/>
-            </div>
-            <div className="bg-white border border-slate-200 rounded-lg p-4">
-              <label className="text-xs text-slate-600 font-medium">會議地點</label>
-              <input value={meeting.location} onChange={e=>setMeeting(p=>({...p,location:e.target.value}))} className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400"/>
-            </div>
-            <div className="md:col-span-2 bg-white border border-slate-200 rounded-lg p-4">
-              <label className="text-xs text-slate-600 font-medium">備註</label>
-              <textarea value={meeting.notes} onChange={e=>setMeeting(p=>({...p,notes:e.target.value}))} className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400" rows="2"/>
-            </div>
-          </div>
-          <div className="bg-white border border-slate-200 rounded-lg p-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="font-medium text-slate-800">會議狀態</span>
-              <select value={status} onChange={e=>setStatus(e.target.value)} className="border border-slate-300 rounded px-3 py-1.5 text-sm">
-                <option value="pending">待開會</option>
-                <option value="started">進行中</option>
-                <option value="ended">已結束</option>
-              </select>
-            </div>
-          </div>
-          <div className={`p-4 rounded-lg ${canStart?'bg-green-50 border border-green-300':'bg-red-50 border border-red-300'}`}>
-            {startBlockReason()?<div className="text-sm text-red-700"><strong>⚠️ 無法開始會議</strong><p className="mt-1">{startBlockReason()}</p></div>:<div className="text-sm text-green-700"><strong>✅ 可開始會議</strong></div>}
-          </div>
-        </div>}
+              {adminTab === 'attendance' && (
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <h2 className="text-lg font-bold mb-4">身份確認 (設定登入密碼)</h2>
+                  
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-lg mb-6 flex gap-3 text-sm">
+                    <Info className="w-6 h-6 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold mb-1">【法律提示】依據《第14/2017號法律》：</p>
+                      <ul className="list-disc pl-5 space-y-1 text-amber-900">
+                        <li><strong>第27條 (出席登記)：</strong>管委會必須查對身份證明文件，未經核實身份之選票依法無效。</li>
+                        <li><strong>第26條 (授權代理)：</strong>代理人可代表多人。若為<strong>本廈業主</strong>，只需普通簽名函件；若為<strong>非業主</strong>，管委會必須登記其資料並要求出示「經公證署認筆跡」的授權書。</li>
+                      </ul>
+                    </div>
+                  </div>
 
-        {/* EXPORT */}
-        {adminTab==='export'&&<div>
-          <div className="space-y-3">
-            <button onClick={exportResultCSV} className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 text-sm font-medium">📥 匯出為 CSV</button>
-            <button onClick={exportResultPDF} className="w-full bg-red-600 text-white px-4 py-2.5 rounded-lg hover:bg-red-700 text-sm font-medium">📄 匯出為 PDF</button>
-          </div>
-        </div>}
-
-        {/* LAW */}
-        {adminTab==='law'&&<LawView onBack={()=>setAdminTab('roster')} backLabel='← 返回議程'/>}
-      </div>
-    </div>
-    );
-  }
-
-  // ════ USER ════
-  const currentUser=units.find(u=>u.id===loginId.trim().toUpperCase());
-  if(view==='user'){
-    if(subView==='law')return <LawView onBack={()=>setSubView(null)} backLabel='← 返回投票'/>;
-    return(
-    <div className="min-h-screen bg-slate-50">
-      <div className="bg-slate-800 text-white px-4 py-2 flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-2"><div className="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center font-bold text-sm">👤</div><div><span className="font-semibold text-sm">{currentUser?.owner} ({currentUser?.id}) — 投票介面</span><MeetingMeta meeting={meeting} light/></div></div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="text-green-400 font-mono text-xs bg-slate-900 px-2.5 py-1 rounded-lg">🕐 {clockStr}</div>
-          <button onClick={()=>setSubView('law')} className="text-slate-300 hover:text-white text-xs border border-slate-600 px-2 py-1 rounded">📖 法律</button>
-          <button onClick={()=>{setView('home');setLoginId('');setLoginPw('');}} className="text-slate-300 hover:text-white text-xs border border-slate-600 px-2 py-1 rounded">← 登出</button>
-        </div>
-      </div>
-      <div className="bg-white border-b border-slate-200 px-2 overflow-x-auto">
-        <div className="flex min-w-max">{OWNER_TABS.map(t=>(<button key={t.id} onClick={()=>setSubView(t.id==='vote'?null:t.id)} className={`px-4 py-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${(t.id==='vote'?subView===null:subView===t.id)?'border-emerald-600 text-emerald-600':'border-transparent text-slate-500 hover:text-slate-700'}`}>{t.label}</button>))}</div>
-      </div>
-      <div className="p-4 max-w-2xl mx-auto">
-        {!subView&&<div className="space-y-4">
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-blue-800 text-sm">
-            <strong>⚠️ 投票須知</strong>：您的投票將被記錄。每項議案可選擇贊成、反對或棄權。投票結果將根據《第14/2017號法律》相關條文進行統計。
-          </div>
-          {agendas.map((a,i)=>{
-            const res=calcResult(a,confirmedUnits,[votes[a.id]||{}][0]?votes[a.id]||{}:{},totalShare);
-            return(
-            <div key={a.id} className="bg-white border border-slate-200 rounded-lg p-4">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="font-semibold text-slate-800">{i+1}. {a.title}</div>
-                  <div className="text-xs text-slate-600 mt-1">{THRESHOLDS[a.threshold].law}</div>
+                  <table className="w-full text-left border text-sm">
+                    <thead>
+                      <tr className="bg-slate-100">
+                        <th className="p-2 border-b">單位(份額)</th><th className="p-2 border-b">申報狀態及授權</th><th className="p-2 border-b">密碼(證件後4碼)</th><th className="p-2 border-b text-center">管委會核對</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {units.map(u => (
+                        <tr key={u.id} className="border-b align-top hover:bg-slate-50">
+                          <td className="p-2 font-bold pt-3">{u.unit} <span className="text-xs font-mono text-blue-600 bg-blue-50 px-1 rounded">{u.valuePercent}%</span><br/><span className="text-gray-500 font-normal">{u.owner}</span></td>
+                          <td className="p-2 pt-3">
+                            <select value={u.status} onChange={e => handleUnitUpdateCloud(u.id, 'status', e.target.value)} disabled={meetingStatus !== 'pending'} className="border p-1 rounded mb-2 block bg-white">
+                              <option value="absent">缺席</option><option value="present">親身出席</option><option value="proxy">授權他人代理</option>
+                            </select>
+                            {u.status === 'proxy' && (
+                              <div className="bg-purple-50 p-3 rounded-lg border border-purple-200 mt-2">
+                                <div className="flex gap-4 mb-2">
+                                  <label className="flex items-center gap-1 font-medium text-purple-800"><input type="radio" checked={u.proxyType==='owner'} onChange={()=>handleUnitUpdateCloud(u.id, 'proxyType', 'owner')} disabled={meetingStatus!=='pending'}/> 授權業主</label>
+                                  <label className="flex items-center gap-1 font-medium text-purple-800"><input type="radio" checked={u.proxyType==='non_owner'} onChange={()=>handleUnitUpdateCloud(u.id, 'proxyType', 'non_owner')} disabled={meetingStatus!=='pending'}/> 授權非業主</label>
+                                </div>
+                                {u.proxyType === 'owner' && (
+                                  <select value={u.proxyToOwnerId} onChange={e=>handleUnitUpdateCloud(u.id,'proxyToOwnerId',e.target.value)} disabled={meetingStatus!=='pending'} className="border p-1.5 w-full text-sm rounded bg-white">
+                                    <option value="">-- 選擇已申報出席的業主 --</option>
+                                    {presentOwners.map(po => <option key={po.id} value={po.id}>{po.unit} {po.owner}</option>)}
+                                  </select>
+                                )}
+                                {u.proxyType === 'non_owner' && (
+                                  <div className="space-y-2 mt-1">
+                                    <input type="text" placeholder="代理人姓名" value={u.proxyNonOwner.name} onChange={e=>handleNonOwnerProxyUpdateCloud(u.id,'name',e.target.value)} disabled={meetingStatus!=='pending'} className="border p-1.5 w-full text-sm rounded" />
+                                    <input type="text" placeholder="完整身份證號碼" value={u.proxyNonOwner.idCard} onChange={e=>handleNonOwnerProxyUpdateCloud(u.id,'idCard',e.target.value)} disabled={meetingStatus!=='pending'} className="border p-1.5 w-full text-sm rounded" />
+                                    <div className="text-xs text-amber-700 bg-amber-100 p-1.5 rounded flex items-center gap-1"><AlertCircle className="w-3 h-3"/> 必須核對「認筆跡」授權書</div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-2 pt-3 align-middle text-center">
+                             {u.status !== 'absent' && <input type="text" maxLength={4} value={u.ownerIdCardLast4} onChange={e=>handleUnitUpdateCloud(u.id, 'ownerIdCardLast4', e.target.value.replace(/\D/g, ''))} disabled={u.isConfirmed || meetingStatus !== 'pending'} className="border p-2 w-20 text-center tracking-widest rounded bg-white disabled:bg-slate-100" placeholder="••••"/>}
+                          </td>
+                          <td className="p-2 text-center pt-3 align-middle w-[100px]">
+                            {u.status !== 'absent' && (
+                              <button onClick={()=>handleUnitUpdateCloud(u.id, 'isConfirmed', !u.isConfirmed)} disabled={u.ownerIdCardLast4.length !== 4 || meetingStatus !== 'pending'} className={`px-2 py-2 rounded font-bold text-white text-xs w-full shadow-sm transition-colors ${u.isConfirmed?'bg-green-600 hover:bg-green-700':'bg-amber-500 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed'}`}>
+                                {u.isConfirmed ? '✓ 已確認' : '確認身份'}
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              </div>
-              <div className="flex gap-2 mb-3">
-                {['yes','no','abs'].map(v=>(
-                  <button key={v} onClick={()=>setVotes(p=>({...p,[a.id]:{...(p[a.id]||{}),current_user:v}}))} className={`flex-1 px-3 py-2 rounded text-xs font-medium transition-colors ${(votes[a.id]?.currentUser)===v?'bg-blue-600 text-white':'border border-slate-300 text-slate-700 hover:border-blue-400'}`}>
-                    {v==='yes'?'✅ 贊成':v==='no'?'❌ 反對':'⚪ 棄權'}
-                  </button>
-                ))}
-              </div>
-              {updateNotes&&<textarea placeholder="投票說明（可選）..." className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs outline-none focus:border-blue-400" rows="2"/>}
+              )}
+
+              {adminTab === 'agendas' && (
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <h2 className="text-lg font-bold mb-4">大會議程設定</h2>
+                  
+                  <div className="bg-blue-50 border border-blue-200 text-blue-800 p-3 rounded-lg text-sm mb-6 flex gap-3">
+                    <Info className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold mb-1">【法律提示】法定通過份額（第14/2017號法律第29條）</p>
+                      <p>不同議程具備不同之法定通過門檻（如：一般決議 15%、特別決議 25%、更新工程 2/3）。請確實綁定對應要求。</p>
+                    </div>
+                  </div>
+
+                  {meetingStatus === 'pending' && (
+                    <div className="flex flex-wrap gap-3 mb-6 bg-slate-50 p-4 rounded border">
+                      <input type="text" placeholder="輸入議程題目..." value={newAgendaTitle} onChange={e=>setNewAgendaTitle(e.target.value)} className="flex-1 min-w-[200px] border p-2 rounded outline-none focus:border-blue-500" />
+                      <select value={newAgendaType} onChange={e=>setNewAgendaType(e.target.value)} className="border p-2 rounded bg-white outline-none">
+                        {Object.entries(thresholdRules).map(([key, rule]) => <option key={key} value={key}>{rule.label} - {rule.desc}</option>)}
+                      </select>
+                      <button onClick={handleAddAgenda} className="bg-blue-600 text-white px-5 py-2 rounded font-bold hover:bg-blue-700">加入議程</button>
+                    </div>
+                  )}
+                  <div className="space-y-3">
+                    {agendas.map((a, i) => (
+                      <div key={a.id} className="p-4 border rounded-lg bg-white shadow-sm flex items-start gap-3">
+                         <div className="bg-blue-100 text-blue-800 font-bold px-3 py-1 rounded">{i+1}</div>
+                         <div>
+                            <h4 className="font-bold text-slate-800 text-lg">{a.title}</h4>
+                            <p className="text-sm text-blue-700 mt-1 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 inline-block">{thresholdRules[a.type].label}: {thresholdRules[a.type].desc}</p>
+                         </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {adminTab === 'dashboard' && (
+                <div className="bg-white p-6 rounded-lg shadow">
+                  <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4 border-b pb-4">
+                    <h2 className="text-xl font-bold">會議控制與即時點票</h2>
+                    {meetingStatus === 'pending' && <button onClick={()=>setMeetingStatus('started')} disabled={!attendanceStats.canHoldMeeting} className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed shadow-sm flex items-center gap-2"><Play className="w-5 h-5"/> 開始會議並開放投票</button>}
+                    {meetingStatus === 'started' && <button onClick={handleShowReport} className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-lg font-bold shadow-sm flex items-center gap-2"><Square className="w-5 h-5"/> 結束會議並鎖定選票</button>}
+                  </div>
+                  
+                  <div className="bg-blue-50 border border-blue-200 text-blue-800 p-3 rounded-lg text-sm mb-6 flex gap-3">
+                    <Info className="w-5 h-5 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold mb-1">【法律提示】流會標準（第14/2017號法律第29條）</p>
+                      <p>一般決議之最低出席與贊成份額門檻為 15%。若上方「已確認出席」未達此門檻，系統將依法禁止開啟會議。</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {agendas.map(a => {
+                      const stats = getAgendaStats(a.id);
+                      return (
+                        <div key={a.id} className="border p-5 rounded-xl bg-slate-50 shadow-sm">
+                          <h3 className="font-bold text-lg mb-2">{a.title}</h3>
+                          <p className="text-xs text-slate-500 mb-4 bg-white p-2 border rounded"><strong>要求：</strong>{stats.rule.desc}</p>
+                          <div className="space-y-2 mb-4 bg-white p-4 rounded-lg border">
+                            <div className="flex justify-between text-sm font-bold">
+                              <span className="text-green-700">贊成 {stats.forPercent}%</span><span className="text-red-700">反對 {stats.againstPercent}%</span><span className="text-slate-500">棄權 {stats.abstainPercent}%</span>
+                            </div>
+                            <ProgressBar forP={stats.forPercent} againstP={stats.againstPercent} abstainP={stats.abstainPercent} />
+                          </div>
+                          {meetingStatus !== 'pending' && (
+                            <div className={`p-2 rounded-lg text-center font-bold text-sm flex justify-center items-center gap-2 border ${stats.isPassed ? 'bg-green-100 text-green-800 border-green-300' : 'bg-slate-200 text-slate-600 border-slate-300'}`}>
+                              {stats.isPassed ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                              {stats.isPassed ? '大會結果：已達法定通過門檻' : '大會結果：未達法定門檻'}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
-            );
-          })}
-        </div>}
-        {subView==='export'&&<div className="space-y-3"><button onClick={exportResultCSV} className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 text-sm font-medium">📥 匯出投票記錄</button></div>}
-        {subView==='law'&&<LawView onBack={()=>setSubView(null)} backLabel='← 返回投票'/>}
-      </div>
-    </div>
-    );
-  }
-}
+          </div>
+        );
+      }
 
-// ── Law Browser ──
-const LawBrowser=({onBack,backLabel='← 返回'})=>{
-  const [search,setSearch]=useState('');
-  const [category,setCategory]=useState('');
-  const categories=useMemo(()=>[...new Set(LAWS_COMPLETE.map(l=>l.category))],[]);
-  const filtered=useMemo(()=>{
-    let result=LAWS_COMPLETE;
-    if(category)result=result.filter(l=>l.category===category);
-    if(search)result=result.filter(l=>l.art.includes(search)||l.title.includes(search)||l.fulltext.includes(search));
-    return result;
-  },[category,search]);
-  return(<div className="min-h-screen bg-slate-50"><div className="bg-slate-800 text-white px-4 py-3 flex items-center gap-3"><button onClick={onBack} className="text-slate-300 hover:text-white text-sm">{backLabel}</button><span className="font-semibold">{LAW} — 法律檢索</span></div><div className="max-w-3xl mx-auto p-5"><div className="mb-5 flex gap-3 flex-col"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索文章或關鍵字..." className="w-full border border-slate-300 rounded-lg px-4 py-2 text-sm outline-none focus:border-blue-500"/><div className="flex flex-wrap gap-2"><button onClick={()=>setCategory('')} className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${category===''?'bg-blue-600 text-white':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>全部分類</button>{categories.map(cat=>(<button key={cat} onClick={()=>setCategory(cat)} className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${category===cat?'bg-blue-600 text-white':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>{cat}</button>))}</div></div><div className="space-y-4">{filtered.map(law=>(<div key={law.art} className="bg-white border border-slate-200 rounded-lg p-4"><div className="flex items-start justify-between mb-2"><div><div className="font-bold text-slate-800">{law.art} {law.title}</div><div className="text-xs text-slate-500 mt-0.5"><Badge color="blue">{law.category}</Badge></div></div></div><p className="text-slate-700 text-sm leading-relaxed">{law.fulltext}</p></div>))}{filtered.length===0&&<div className="text-center text-slate-500 py-8">未找到相關條文</div>}</div></div></div>);
-};
+      // --- 視圖 5: 業主投票區 ---
+      if (currentView === 'user' && currentUser) {
+        return (
+          <div className="min-h-screen bg-slate-50 pb-10">
+            <TopNavBar title="業主投票區" subtitle={meetingStatus==='started'?'大會進行中':'請稍候'} icon={Users} showAdminStats={false} />
+            <div className="max-w-3xl mx-auto mt-6 px-4">
+              <div className="bg-white p-6 rounded-xl shadow-sm mb-6 text-center border-t-4 border-blue-600">
+                <h2 className="text-xl font-bold text-slate-800">總投票權重：<span className="text-blue-600 text-3xl">{controlledUnits.reduce((acc, u) => acc + u.valuePercent, 0).toFixed(2)}</span>%</h2>
+                <p className="text-sm text-slate-500 mt-2 bg-slate-100 py-1 rounded inline-block px-4">包含您親身出席及委託代投的單位</p>
+              </div>
 
-// ── Law View ──
-const LawView=({onBack,backLabel='← 返回'})=>{
-  const [tab,setTab]=useState('thresholds');
-  return(<div className="min-h-screen bg-slate-50"><div className="bg-slate-800 text-white px-4 py-3 flex items-center gap-3"><button onClick={onBack} className="text-slate-300 hover:text-white text-sm">{backLabel}</button><span className="font-semibold">{LAW} 法律參考</span></div><div className="bg-white border-b border-slate-200 px-4"><div className="flex">{[{id:'thresholds',label:'決議門檻'},{id:'browser',label:'完整法律檢索'}].map(t=>(<button key={t.id} onClick={()=>setTab(t.id)} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${tab===t.id?'border-blue-600 text-blue-600':'border-transparent text-slate-500 hover:text-slate-700'}`}>{t.label}</button>))}</div></div><div className="max-w-2xl mx-auto p-5">{tab==='thresholds'&&<div className="space-y-4">{Object.entries(THRESHOLDS).map(([k,v]=>(<div key={k} className="bg-white border border-slate-200 rounded-lg p-4"><div className="font-bold text-slate-800 mb-2">{v.label} ({v.pct})</div><div className="text-xs text-slate-600 mb-2">{v.law}</div><p className="text-sm text-slate-700 mb-2">{v.fulltext}</p><div className="text-xs text-slate-600 bg-slate-50 p-2 rounded"><strong>簡述：</strong> {v.desc}</div><div className="text-xs text-slate-600 bg-slate-50 p-2 rounded mt-2"><strong>例子：</strong> {v.eg}</div></div>))}</div>}{tab==='browser'&&<div><LawBrowser onBack={()=>setTab('thresholds')} backLabel='← 返回決議門檻'/></div>}</div></div>);
-};
+              {meetingStatus !== 'started' && (
+                <div className="bg-amber-50 p-8 text-center rounded-xl border border-amber-200 text-amber-800 shadow-sm">
+                  <ClipboardCheck className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <h3 className="text-lg font-bold">目前非投票時段</h3>
+                  <p className="text-sm mt-2">管委會正在進行核對或會議已結束。只有在「會議進行中」方可進行表決。</p>
+                </div>
+              )}
 
-function App(){
-  const [view,setView]=useState('home');
-  const [subView,setSubView]=useState(null);
-  const [adminTab,setAdminTab]=useState('roster');
-  const [meeting,setMeeting]=useState({title:'',date:'',time:'',location:'',notes:''});
-  const [units,setUnits]=useState(INIT_UNITS);
-  const [newU,setNewU]=useState({id:'',owner:'',share:''});
-  const [newA,setNewA]=useState({title:'',threshold:'general'});
-  const [agendas,setAgendas]=useState([]);
-  const [presetAgendas,setPresetAgendas]=useState([]);
-  const [presetSelection,setPresetSelection]=useState({});
-  const [agendaStages,setAS]=useState({});
-  const [votes,setVotes]=useState({});
-  const [adminPw,setAdminPw]=useState('');
-  const [loginId,setLoginId]=useState('');
-  const [loginPw,setLoginPw]=useState('');
-  const [loginErr,setLoginErr]=useState('');
-  const [status,setStatus]=useState('pending');
-  const [clock,setClock]=useState(fmtNow());
-  const csvRef=useRef(null);
+              {meetingStatus === 'started' && (
+                <>
+                  <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl text-sm mb-6 flex gap-3 shadow-sm">
+                    <AlertCircle className="w-6 h-6 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-bold mb-1 text-base">【依法行使表決權須知】</p>
+                      <p className="leading-relaxed">根據《第14/2017號法律》，您的選票（含委託代投）將按所佔樓宇份額加權計算，並直接影響大會決議是否達法定門檻。請謹慎作答，一旦大會結束並鎖定，決議即對全體業主具備法律約束力。</p>
+                    </div>
+                  </div>
 
-  useEffect(()=>{const ti=setInterval(()=>setClock(fmtNow()),1000);return()=>clearInterval(ti);},[]);
+                  {agendas.map((agenda, idx) => {
+                    const stats = getAgendaStats(agenda.id);
+                    return (
+                      <div key={agenda.id} className="bg-white border rounded-xl shadow-md overflow-hidden mb-6">
+                        <div className="bg-slate-50 p-5 border-b">
+                          <div className="font-bold text-xs text-blue-600 mb-1">議程 {idx + 1}</div>
+                          <h2 className="text-xl font-bold text-slate-800">{agenda.title}</h2>
+                          <p className="text-sm text-slate-600 mt-2 bg-white px-3 py-1.5 border rounded-lg inline-block"><strong>要求：</strong>{stats.rule.desc}</p>
+                        </div>
+                        <div className="p-5 space-y-4">
+                          {controlledUnits.map(unit => {
+                            const currentVote = votes[agenda.id]?.[unit.id];
+                            return (
+                              <div key={unit.id} className="flex flex-col md:flex-row md:items-center justify-between bg-slate-50 p-4 rounded-lg border gap-4 hover:border-blue-300 transition-colors">
+                                <div>
+                                  <div className="font-bold text-slate-800 text-lg">{unit.unit}</div>
+                                  <div className="text-sm text-slate-500 mt-0.5">{unit.owner} <span className="font-mono text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded text-xs ml-1">{unit.valuePercent}%</span></div>
+                                </div>
+                                <div className="flex gap-2 w-full md:w-auto">
+                                  <button onClick={() => handleVote(agenda.id, unit.id, 'for')} className={`flex-1 md:w-24 py-2.5 rounded-lg font-bold border transition-colors shadow-sm ${currentVote==='for'?'bg-green-600 text-white border-green-600':'bg-white text-slate-600 hover:bg-green-50 hover:text-green-700 hover:border-green-300'}`}>贊成</button>
+                                  <button onClick={() => handleVote(agenda.id, unit.id, 'against')} className={`flex-1 md:w-24 py-2.5 rounded-lg font-bold border transition-colors shadow-sm ${currentVote==='against'?'bg-red-600 text-white border-red-600':'bg-white text-slate-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300'}`}>反對</button>
+                                  <button onClick={() => handleVote(agenda.id, unit.id, 'abstain')} className={`flex-1 md:w-24 py-2.5 rounded-lg font-bold border transition-colors shadow-sm ${currentVote==='abstain'?'bg-slate-600 text-white border-slate-600':'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-800 hover:border-slate-400'}`}>棄權</button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <div className="bg-slate-50 p-5 border-t">
+                          <h3 className="font-bold text-sm text-slate-500 mb-3 uppercase tracking-wider">全場實時點票</h3>
+                          <div className="flex justify-between text-sm font-bold mb-2">
+                            <span className="text-green-700">贊成: {stats.forPercent}%</span>
+                            <span className="text-red-700">反對: {stats.againstPercent}%</span>
+                          </div>
+                          <ProgressBar forP={stats.forPercent} againstP={stats.againstPercent} abstainP={stats.abstainPercent} />
+                          <div className={`mt-4 p-2.5 rounded-lg text-center font-bold text-sm border ${stats.isPassed ? 'bg-green-100 text-green-800 border-green-300' : 'bg-slate-200 text-slate-600 border-slate-300'}`}>
+                            {stats.isPassed ? '預測：目前票數已達法定通過要求' : '預測：目前票數未達法定要求'}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      }
 
-  const clockStr=clock.slice(11,19);
-  const confirmedUnits=units.filter(u=>u.verified);
-  const totalShare=units.reduce((s,u)=>s+u.share,0);
-  const confShare=confirmedUnits.reduce((s,u)=>s+u.share,0);
-  const confPct=totalShare>0?confShare/totalShare*100:0;
-  const quorum=confPct>=15;
+      return null;
+    }
 
-  const adminLogin=()=>{if(adminPw==='0000'){setView('admin');setAdminPw('');}else alert('密碼錯誤');};
-  const userLogin=()=>{const u=units.find(x=>x.id===loginId.trim().toUpperCase());if(!u){setLoginErr('單位不存在');return;}if(u.password!==loginPw){setLoginErr('密碼錯誤');return;}setView('user');setLoginId('');setLoginPw('');};
-
-  const updateNotes=(id,notes)=>setAS(p=>({...p,[id]:{...(p[id]||initSD()),notes}}));
-
-  const addUnit=()=>{const id=newU.id.trim().toUpperCase();if(!id||!newU.owner.trim()||!newU.share)return;if(units.find(u=>u.id===id))return alert('單位編號已存在');setUnits(p=>[...p,{id,owner:newU.owner.trim(),share:parseFloat(newU.share),status:'absent',proxyType:null,proxyToOwnerId:null,password:DEFAULT_PW,verified:false,ballotType:'online'}]);setNewU({id:'',owner:'',share:''});};
-  const addAgenda=()=>{if(!newA.title.trim())return;const id=mkId();setAgendas(p=>[...p,{id,title:newA.title.trim(),threshold:newA.threshold}]);setAS(p=>({...p,[id]:initSD()}));setNewA({title:'',threshold:'general'});};
-  const loadPreset=(type)=>{const nag=PRESETS[type].agendas.map(a=>({id:mkId(),...a}));setPresetAgendas(nag);const sel={};nag.forEach(a=>{sel[a.id]=true;});setPresetSelection(sel);};
-  const importCSV=(e)=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>{const imp=[];ev.target.result.split('\n').slice(1).forEach(l=>{const[id,owner,share]=l.split(',').map(s=>s.trim());if(id&&owner&&share&&!units.find(u=>u.id===id.toUpperCase()))imp.push({id:id.toUpperCase(),owner,share:parseFloat(share),status:'absent',proxyType:null,proxyToOwnerId:null,password:DEFAULT_PW,verified:false,ballotType:'online'});});setUnits(p=>[...p,...imp]);alert(`已成功匯入 ${imp.length} 個單位`);};r.readAsText(file);e.target.value='';};
-
-  const canStart=quorum&&agendas.length>0&&meeting.title.trim()&&meeting.date.trim()&&meeting.time.trim()&&meeting.location.trim();
-  const startBlockReason=()=>{if(!meeting.title.trim())return'請先填寫大會全稱';if(!meeting.date.trim())return'請先填寫召開日期';if(!meeting.time.trim())return'請先填寫召開時間';if(!meeting.location.trim())return'請先填寫會議地點';if(agendas.length===0)return'請先設定議程';if(!quorum)return`出席份額${confPct.toFixed(1)}%未達15%`;return null;};
-
-  const exportResultPDF=()=>{const w=window.open('','_blank');w.document.write(buildPDF(meeting,agendas,agendaStages,votes,confirmedUnits,totalShare));w.document.close();};
-  const exportResultCSV=()=>{let rows='議案,單位,業主姓名,份額(%),投票\n';agendas.forEach(a=>confirmedUnits.forEach(u=>{const v=(votes[a.id]||{})[u.id]||'—';rows+=`"${a.title}",${u.id},"${u.owner}",${u.share.toFixed(2)},${v==='yes'?'贊成':v==='no'?'反對':v==='abs'?'棄權':'未投票'}\n`;}));const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+rows],{type:'text/csv'}));a.download='投票記錄.csv';a.click();};
-
-  const ADMIN_TABS=[{id:'roster',label:'📋 業主名冊'},{id:'attendance',label:'✅ 出席登記'},{id:'agenda',label:'📄 議程管理'},{id:'control',label:'🔔 會議控制'},{id:'export',label:'📤 匯出'},{id:'law',label:'📖 法律參考'},...(status==='ended'?[{id:'summary',label:'🏁 大會總結',hl:true}]:[])];
-  const OWNER_TABS=[{id:'vote',label:'🗳 投票'},{id:'export',label:'📊 結果匯出'},{id:'law',label:'📖 法律參考'}];
-
-  if(view==='law_page')return <LawView onBack={()=>setView('home')}/>;
-
-  if(view==='home')return(<div className="min-h-screen bg-slate-900 flex flex-col"><div className="bg-slate-800 border-b border-slate-700 px-6 py-4"><div className="max-w-4xl mx-auto flex items-center justify-between"><div className="flex items-center gap-3"><div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center font-bold text-white text-xl">業</div><div><div className="text-white font-bold text-lg">澳門業主大會管理與投票系統</div><div className="text-slate-400 text-xs">依據{LAW.split('《')[1].split('》')[0]}設計</div></div></div><div className="text-right hidden md:block"><div className="text-green-400 font-mono text-sm">{clockStr}</div><div className="text-slate-500 text-xs">系統時間</div></div></div></div><div className="flex-1 flex items-center justify-center p-6"><div className="max-w-2xl w-full"><div className="text-center mb-8"><h2 className="text-white text-2xl font-bold">{meeting.title||'澳門業主大會'}</h2><div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1">{meeting.date&&meeting.time&&<span className="text-slate-300 text-sm">📅 {meeting.date}　🕐 {meeting.time}</span>}{meeting.location&&<span className="text-slate-300 text-sm">📍 {meeting.location}</span>}</div>{meeting.notes&&<p className="text-slate-400 text-xs mt-1">備註：{meeting.notes}</p>}<p className="text-slate-500 text-sm mt-3">請選擇您的身份登入</p></div><div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-4"><div className="bg-slate-800 border border-slate-600 rounded-2xl p-6"><div className="flex items-center gap-2 mb-1"><div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white text-sm">⚙</div><span className="text-white font-semibold">管理委員會</span></div><p className="text-slate-400 text-xs mb-4">業主名冊、出席登記、議程控制及匯出</p><input type="password" placeholder="管理員密碼" value={adminPw} onChange={e=>setAdminPw(e.target.value)} onKeyDown={e=>e.key==='Enter'&&adminLogin()} className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:border-blue-400"/><button onClick={adminLogin} className="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-sm font-medium transition-colors">管理員登入</button><p className="text-slate-500 text-xs text-center mt-2">預設密碼：0000</p></div><div className="bg-slate-800 border border-slate-600 rounded-2xl p-6"><div className="flex items-center gap-2 mb-1"><div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white text-sm">👤</div><span className="text-white font-semibold">業主 / 授權代理人</span></div><p className="text-slate-400 text-xs mb-4">親身出席業主或授權代理人，均以單位號碼登入</p>{(()=>{const eligible=units.filter(u=>u.verified&&u.status!=='absent');const filtered=loginId.trim()===''?eligible:eligible.filter(u=>u.id.toUpperCase().includes(loginId.trim().toUpperCase())||u.owner.includes(loginId.trim()));const exact=eligible.find(u=>u.id===loginId.trim().toUpperCase());return(<><div className="relative mb-2"><input type="text" placeholder="輸入單位號碼（如：1A）" value={loginId} onChange={e=>{setLoginId(e.target.value);setLoginErr('');}} className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm outline-none focus:border-emerald-400" autoComplete="off"/>{loginId.length>0&&!exact&&filtered.length>0&&(<div className="absolute z-10 left-0 right-0 mt-1 bg-slate-700 border border-slate-500 rounded-xl overflow-hidden shadow-xl max-h-40 overflow-y-auto">{filtered.map(u=>(<button key={u.id} onClick={()=>setLoginId(u.id)} className="w-full flex items-center gap-3 px-3 py-2 hover:bg-slate-600 text-left transition-colors"><span className="font-mono font-bold text-emerald-400 w-10 shrink-0">{u.id}</span><span className="text-white text-sm flex-1 truncate">{u.owner}</span><span className="text-slate-400 text-xs shrink-0">{u.share.toFixed(1)}%</span></button>))}</div>)}{eligible.length===0&&<p className="text-amber-400 text-xs mt-1">尚無已核實業主，請聯絡管委會。</p>}</div><input type="password" placeholder="登入密碼（預設：1111）" value={loginPw} onChange={e=>setLoginPw(e.target.value)} onKeyDown={e=>e.key==='Enter'&&userLogin()} className="w-full bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm mb-3 outline-none focus:border-emerald-400"/>{loginErr&&<p className="text-red-400 text-xs mb-2">{loginErr}</p>}<button onClick={userLogin} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg py-2 text-sm font-medium transition-colors">登入</button><p className="text-slate-500 text-xs text-center mt-2">非業主代理人亦使用所代理之單位號碼登入</p></>);})()}</div></div><div className="flex justify-center"><button onClick={()=>setView('law_page')} className="text-slate-400 hover:text-slate-200 text-sm underline">📖 法律條文參考</button></div></div></div></div>);
-
-  if(view==='admin'){
-    if(subView==='law')return <LawView onBack={()=>setSubView(null)} backLabel='← 返回後台'/>;
-    return(<div className="min-h-screen bg-slate-50"><div className="bg-slate-800 text-white px-4 py-2 flex items-center justify-between flex-wrap gap-2"><div className="flex items-center gap-2"><div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center font-bold text-sm">業</div><div><span className="font-semibold text-sm">{meeting.title} — 管委會後台</span><MeetingMeta meeting={meeting} light/></div></div><div className="flex items-center gap-2 flex-wrap"><div className="text-green-400 font-mono text-xs bg-slate-900 px-2.5 py-1 rounded-lg">🕐 {clockStr}</div><span className={`text-xs px-2.5 py-1 rounded-full font-medium ${quorum?'bg-green-600':'bg-amber-500'}`}>出席 {confPct.toFixed(1)}% {quorum?'✅':'⚠️'}</span><span className={`text-xs px-2.5 py-1 rounded-full ${status==='pending'?'bg-slate-600':status==='started'?'bg-green-600':'bg-red-700'}`}>{status==='pending'?'待開會':status==='started'?'● 進行中':'已結束'}</span><button onClick={()=>setSubView('law')} className="text-slate-300 hover:text-white text-xs border border-slate-600 px-2 py-1 rounded">📖 法律</button><button onClick={()=>setView('home')} className="text-slate-300 hover:text-white text-xs border border-slate-600 px-2 py-1 rounded">← 首頁</button></div></div><div className="bg-white border-b border-slate-200 px-2 overflow-x-auto"><div className="flex min-w-max">{ADMIN_TABS.map(t=>(<button key={t.id} onClick={()=>setAdminTab(t.id)} className={`px-4 py-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${adminTab===t.id?'border-blue-600 text-blue-600':'border-transparent text-slate-500 hover:text-slate-700'} ${t.hl?'text-green-600 font-semibold':''}`}>{t.label}</button>))}</div></div><div className="p-4 max-w-5xl mx-auto">{adminTab==='roster'&&<div><div className="flex items-center justify-between mb-3 flex-wrap gap-2"><h2 className="font-semibold text-slate-800">業主名冊管理</h2><div className="flex gap-2 items-center"><input ref={csvRef} type="file" accept=".csv" onChange={importCSV} className="hidden"/><button onClick={()=>csvRef.current.click()} className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg">📥 CSV 匯入</button><button onClick={()=>{const blob=new Blob(['\uFEFF單位號碼,業主姓名,份額(%)\n'+units.map(u=>`${u.id},${u.owner},${u.share.toFixed(2)}`).join('\n')],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='業主名冊.csv';a.click();}} className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg">📤 CSV 匯出</button><span className="text-slate-400 text-xs">{units.length} 單位｜{totalShare.toFixed(2)}%</span></div></div><div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 text-amber-800 text-xs">CSV 格式：<code className="bg-amber-100 px-1 rounded">單位號碼, 業主姓名, 份額(%)</code>　｜　預設密碼：<strong>{DEFAULT_PW}</strong></div><div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-3"><p className="text-blue-700 font-medium text-xs mb-2">新增單位</p><div className="flex gap-2 flex-wrap"><input value={newU.id} onChange={e=>setNewU(p=>({...p,id:e.target.value}))} placeholder="單位號碼" className="border border-slate-300 rounded px-3 py-1.5 text-sm w-24"/><input value={newU.owner} onChange={e=>setNewU(p=>({...p,owner:e.target.value}))} placeholder="業主姓名" className="border border-slate-300 rounded px-3 py-1.5 text-sm flex-1 min-w-32"/><input value={newU.share} onChange={e=>setNewU(p=>({...p,share:e.target.value}))} type="number" step="0.01" placeholder="份額(%)" className="border border-slate-300 rounded px-3 py-1.5 text-sm w-28"/><button onClick={addUnit} className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">新增</button></div></div><div className="bg-white border border-slate-200 rounded-xl overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 border-b text-xs text-slate-500 uppercase tracking-wide"><tr><th className="text-left px-4 py-2.5">單位</th><th className="text-left px-4 py-2.5">業主</th><th className="text-right px-4 py-2.5">份額</th><th className="text-center px-4 py-2.5">狀態</th><th className="text-center px-4 py-2.5">核驗</th><th className="text-center px-4 py-2.5">操作</th></tr></thead><tbody>{units.map((u,i)=>(<tr key={u.id} className={`border-b border-slate-100 ${i%2===0?'':'bg-slate-50/40'}`}><td className="px-4 py-2.5 font-mono font-bold text-slate-800">{u.id}</td><td className="px-4 py-2.5 text-slate-700">{u.owner}</td><td className="px-4 py-2.5 text-right text-slate-500">{u.share.toFixed(2)}%</td><td className="px-4 py-2.5 text-center">{u.status==='absent'?<Badge>缺席</Badge>:u.status==='present'?<Badge color="green">親身</Badge>:u.proxyType==='owner'?<Badge color="blue">→{u.proxyToOwnerId}</Badge>:<Badge color="purple">非業主代理</Badge>}</td><td className="px-4 py-2.5 text-center">{u.verified?'✅':'—'}</td><td className="px-4 py-2.5 text-center"><button onClick={()=>setUnits(p=>p.filter(x=>x.id!==u.id))} className="text-red-400 hover:text-red-600 text-xs">刪除</button></td></tr>))}</tbody></table></div></div>}{adminTab==='attendance'&&<div><h2 className="font-semibold text-slate-800 mb-3">出席身份登記</h2><div className="space-y-3">{units.map(u=>(<div key={u.id} className="bg-white border border-slate-200 rounded-lg p-3"><div className="flex items-center justify-between flex-wrap gap-2"><div className="flex items-center gap-3 flex-1"><div className="font-mono font-bold text-blue-600 w-10">{u.id}</div><div className="flex-1 min-w-0"><div className="font-medium text-slate-800">{u.owner}</div><div className="text-xs text-slate-500">{u.share.toFixed(2)}%</div></div></div><select value={u.status} onChange={e=>setUnits(p=>p.map(x=>x.id===u.id?{...x,status:e.target.value}:x))} className="border border-slate-300 rounded px-3 py-1.5 text-sm"><option value="absent">缺席</option><option value="present">親身出席</option><option value="proxy_owner">業主代理</option><option value="proxy_other">非業主代理</option></select>{(u.status==='proxy_owner'||u.status==='proxy_other')&&(<select value={u.proxyToOwnerId||''} onChange={e=>setUnits(p=>p.map(x=>x.id===u.id?{...x,proxyToOwnerId:e.target.value}:x))} className="border border-slate-300 rounded px-3 py-1.5 text-sm"><option value="">代理給...</option>{units.filter(x=>x.id!==u.id).map(x=><option key={x.id} value={x.id}>{x.id} - {x.owner}</option>)}</select>)}<button onClick={()=>setUnits(p=>p.map(x=>x.id===u.id?{...x,verified:!x.verified}:x))} className={`px-4 py-1.5 rounded text-sm font-medium transition-colors ${u.verified?'bg-green-600 text-white':'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}>{u.verified?'✅ 已核驗':'核驗'}</button></div></div>))}</div></div>}{adminTab==='agenda'&&<div><h2 className="font-semibold text-slate-800 mb-3">議程管理</h2><div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4"><p className="text-blue-700 font-medium text-xs mb-3">快速載入預設議程</p><div className="flex gap-2 flex-wrap">{Object.entries(PRESETS).map(([k,p]=>(<button key={k} onClick={()=>loadPreset(k)} className="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">{p.label}</button>)))}{presetAgendas.length>0&&(<div className="mt-4 pt-4 border-t border-blue-300 w-full"><p className="text-blue-700 font-medium text-xs mb-2">選擇要加入的議程（可取消勾選）</p><div className="space-y-2">{presetAgendas.map(a=>(<label key={a.id} className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={presetSelection[a.id]||false} onChange={e=>setPresetSelection(p=>({...p,[a.id]:e.target.checked}))} className="w-4 h-4"/><span className="text-sm text-slate-700">{a.title} <span className="text-xs text-slate-500">({THRESHOLDS[a.threshold].label})</span></span></label>))}</div><button onClick={()=>{const sel=Object.entries(presetSelection).filter(([,v])=>v).map(([id])=>presetAgendas.find(a=>a.id===id)).filter(Boolean);setAgendas(p=>[...p,...sel]);setPresetAgendas([]);setPresetSelection({});}} className="mt-3 bg-green-600 text-white px-4 py-1.5 rounded text-sm hover:bg-green-700">確認加入選中議程</button></div>)}</div></div><div className="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-4"><p className="text-slate-700 font-medium text-xs mb-2">新增單項議程</p><div className="flex gap-2 flex-wrap"><input value={newA.title} onChange={e=>setNewA(p=>({...p,title:e.target.value}))} placeholder="議程名稱" className="border border-slate-300 rounded px-3 py-1.5 text-sm flex-1 min-w-40"/><select value={newA.threshold} onChange={e=>setNewA(p=>({...p,threshold:e.target.value}))} className="border border-slate-300 rounded px-3 py-1.5 text-sm">{Object.entries(THRESHOLDS).map(([k,v]=>(<option key={k} value={k}>{v.label}</option>)))</select><button onClick={addAgenda} className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm hover:bg-blue-700">新增</button></div></div>{agendas.length>0&&(<div className="space-y-3"><h3 className="font-semibold text-slate-700 text-sm">當前議程列表</h3>{agendas.map((a,i)=>(<div key={a.id} className="bg-white border border-slate-200 rounded-lg p-3"><div className="flex items-start justify-between gap-3 mb-2"><div><div className="font-medium text-slate-800">{i+1}. {a.title}</div><div className="text-xs text-slate-600 mt-0.5">{THRESHOLDS[a.threshold].law} — {THRESHOLDS[a.threshold].desc}</div></div><button onClick={()=>setAgendas(p=>p.filter(x=>x.id!==a.id))} className="text-red-400 hover:text-red-600 text-sm">刪除</button></div><textarea value={agendaStages[a.id]?.notes||''} onChange={e=>updateNotes(a.id,e.target.value)} placeholder="備註..." className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs outline-none focus:border-blue-400"/></div>))}</div>)}</div>}{adminTab==='control'&&<div><div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4"><div className="bg-white border border-slate-200 rounded-lg p-4"><label className="text-xs text-slate-600 font-medium">大會全稱</label><input value={meeting.title} onChange={e=>setMeeting(p=>({...p,title:e.target.value}))} className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400"/></div><div className="bg-white border border-slate-200 rounded-lg p-4"><label className="text-xs text-slate-600 font-medium">召開日期</label><input value={meeting.date} onChange={e=>setMeeting(p=>({...p,date:e.target.value}))} type="date" className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400"/></div><div className="bg-white border border-slate-200 rounded-lg p-4"><label className="text-xs text-slate-600 font-medium">召開時間</label><input value={meeting.time} onChange={e=>setMeeting(p=>({...p,time:e.target.value}))} type="time" className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400"/></div><div className="bg-white border border-slate-200 rounded-lg p-4"><label className="text-xs text-slate-600 font-medium">會議地點</label><input value={meeting.location} onChange={e=>setMeeting(p=>({...p,location:e.target.value}))} className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400"/></div><div className="md:col-span-2 bg-white border border-slate-200 rounded-lg p-4"><label className="text-xs text-slate-600 font-medium">備註</label><textarea value={meeting.notes} onChange={e=>setMeeting(p=>({...p,notes:e.target.value}))} className="w-full border border-slate-300 rounded mt-1 px-3 py-2 text-sm outline-none focus:border-blue-400" rows="2"/></div></div><div className="bg-white border border-slate-200 rounded-lg p-4 mb-4"><div className="flex items-center justify-between mb-3"><span className="font-medium text-slate-800">會議狀態</span><select value={status} onChange={e=>setStatus(e.target.value)} className="border border-slate-300 rounded px-3 py-1.5 text-sm"><option value="pending">待開會</option><option value="started">進行中</option><option value="ended">已結束</option></select></div></div><div className={`p-4 rounded-lg ${canStart?'bg-green-50 border border-green-300':'bg-red-50 border border-red-300'}`}>{startBlockReason()?<div className="text-sm text-red-700"><strong>⚠️ 無法開始會議</strong><p className="mt-1">{startBlockReason()}</p></div>:<div className="text-sm text-green-700"><strong>✅ 可開始會議</strong></div>}</div></div>}{adminTab==='export'&&<div><div className="space-y-3"><button onClick={exportResultCSV} className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 text-sm font-medium">📥 匯出為 CSV</button><button onClick={exportResultPDF} className="w-full bg-red-600 text-white px-4 py-2.5 rounded-lg hover:bg-red-700 text-sm font-medium">📄 匯出為 PDF</button></div></div>}{adminTab==='law'&&<LawView onBack={()=>setAdminTab('roster')} backLabel='← 返回議程'/>}</div></div>);
-  }
-
-  const currentUser=units.find(u=>u.id===loginId.trim().toUpperCase());
-  if(view==='user'){
-    if(subView==='law')return <LawView onBack={()=>setSubView(null)} backLabel='← 返回投票'/>;
-    return(<div className="min-h-screen bg-slate-50"><div className="bg-slate-800 text-white px-4 py-2 flex items-center justify-between flex-wrap gap-2"><div className="flex items-center gap-2"><div className="w-7 h-7 bg-emerald-600 rounded-lg flex items-center justify-center font-bold text-sm">👤</div><div><span className="font-semibold text-sm">{currentUser?.owner} ({currentUser?.id}) — 投票介面</span><MeetingMeta meeting={meeting} light/></div></div><div className="flex items-center gap-2 flex-wrap"><div className="text-green-400 font-mono text-xs bg-slate-900 px-2.5 py-1 rounded-lg">🕐 {clockStr}</div><button onClick={()=>setSubView('law')} className="text-slate-300 hover:text-white text-xs border border-slate-600 px-2 py-1 rounded">📖 法律</button><button onClick={()=>{setView('home');setLoginId('');setLoginPw('');}} className="text-slate-300 hover:text-white text-xs border border-slate-600 px-2 py-1 rounded">← 登出</button></div></div><div className="bg-white border-b border-slate-200 px-2 overflow-x-auto"><div className="flex min-w-max">{OWNER_TABS.map(t=>(<button key={t.id} onClick={()=>setSubView(t.id==='vote'?null:t.id)} className={`px-4 py-3 text-xs font-medium border-b-2 whitespace-nowrap transition-colors ${(t.id==='vote'?subView===null:subView===t.id)?'border-emerald-600 text-emerald-600':'border-transparent text-slate-500 hover:text-slate-700'}`}>{t.label}</button>))}</div></div><div className="p-4 max-w-2xl mx-auto">{!subView&&<div className="space-y-4"><div className="bg-blue-50 border border-blue-200 rounded-xl p-4 text-blue-800 text-sm"><strong>⚠️ 投票須知</strong>：您的投票將被記錄。每項議案可選擇贊成、反對或棄權。投票結果將根據《第14/2017號法律》相關條文進行統計。</div>{agendas.map((a,i)=>{const res=calcResult(a,confirmedUnits,[votes[a.id]||{}][0]?votes[a.id]||{}:{},totalShare);return(<div key={a.id} className="bg-white border border-slate-200 rounded-lg p-4"><div className="flex items-start justify-between mb-3"><div><div className="font-semibold text-slate-800">{i+1}. {a.title}</div><div className="text-xs text-slate-600 mt-1">{THRESHOLDS[a.threshold].law}</div></div></div><div className="flex gap-2 mb-3">{['yes','no','abs'].map(v=>(<button key={v} onClick={()=>setVotes(p=>({...p,[a.id]:{...(p[a.id]||{}),current_user:v}}))} className={`flex-1 px-3 py-2 rounded text-xs font-medium transition-colors ${(votes[a.id]?.currentUser)===v?'bg-blue-600 text-white':'border border-slate-300 text-slate-700 hover:border-blue-400'}`}>{v==='yes'?'✅ 贊成':v==='no'?'❌ 反對':'⚪ 棄權'}</button>))}</div></div>);})}</div>}{subView==='export'&&<div className="space-y-3"><button onClick={exportResultCSV} className="w-full bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 text-sm font-medium">📥 匯出投票記錄</button></div>}{subView==='law'&&<LawView onBack={()=>setSubView(null)} backLabel='← 返回投票'/>}</div></div>);
-  }
-}
-
-function buildPDF(meeting,agendas,agendaStages,votes,confirmedUnits,totalShare){
-  let html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>業主大會記錄</title><style>body{font-family:Arial,sans-serif;margin:20px;color:#333}h1{color:#1e40af;border-bottom:2px solid #1e40af;padding-bottom:10px}table{width:100%;border-collapse:collapse;margin:15px 0}.result{padding:10px;background:#f0f9ff;border:1px solid #bfdbfe;margin:10px 0}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#e0e7ff}</style></head><body>`;
-  html+=`<h1>澳門業主大會會議記錄</h1>`;
-  html+=`<div><strong>大會全稱：</strong>${meeting.title}</div>`;
-  html+=`<div><strong>召開日期：</strong>${meeting.date} ${meeting.time}</div>`;
-  html+=`<div><strong>會議地點：</strong>${meeting.location}</div>`;
-  html+=`<h2>投票結果統計</h2>`;
-  html+=`<table><thead><tr><th>議案</th><th>贊成</th><th>反對</th><th>棄權</th><th>結果</th></tr></thead><tbody>`;
-  agendas.forEach(a=>{const r=calcResult(a,confirmedUnits,votes[a.id]||{},totalShare);html+=`<tr><td>${a.title}</td><td>${r.yp.toFixed(1)}%</td><td>${r.np.toFixed(1)}%</td><td>${r.ap.toFixed(1)}%</td><td>${r.passed?'✅ 通過':'❌ 未通過'}</td></tr>`;});
-  html+=`</tbody></table><hr><div style="font-size:12px;color:#666;margin-top:20px;">根據《第14/2017號法律》生成 · ${new Date().toLocaleString('zh-TW')}</div></body></html>`;
-  return html;
-}
-
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
-    </script>
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<MacauCondoMeeting />);
+  </script>
 </body>
 </html>
