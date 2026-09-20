@@ -1,0 +1,16 @@
+{
+  "name": "macau-owners-meeting",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs"
+  },
+  "description": "Static single-device owners meeting prototype; Node dependencies are test-only.",
+  "devDependencies": {
+    "@babel/core": "7.28.4",
+    "@babel/preset-react": "7.27.1",
+    "jsdom": "26.1.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}
