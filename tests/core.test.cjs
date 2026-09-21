@@ -1,0 +1,25 @@
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const C = require('../meeting-core.js');
+const unit = (id, share, confirmed=true) => ({id,tower:'A',unit:id,owner:id,valuePercent:share,seqNo:id,isPriorityProxy:false,status:confirmed?'present':'absent',proxyType:'none',proxyToOwnerId:'',proxyNonOwner:{name:'',idCard:'',phone:''},isConfirmed:confirmed,ownerIdCardLast4:confirmed?'1234':''});
+const agenda = (type='general_15', status='ended') => ({id:'A1',title:'Test',type,status,startTime:100,endTime:200,noticeConfirmed:true});
+function tally(type,shares,ballots,extra={}) {return C.tally(shares.map((w,i)=>unit('U'+i,w)),{...agenda(type),...extra},{A1:Object.fromEntries(ballots.map((v,i)=>['U'+i,v]))});}
+const state = () => ({meetingInfo:{name:'備份測試',datetime:'2026-09-20',location:'澳門',chair:'測試主席',recorder:'測試記錄人',startedAt:90},meetingStatus:'started',units:[unit('U0',15),unit('U1',10),unit('U2',75,false)],agendas:[{id:'A1',title:'投票中',type:'general_15',status:'voting',startTime:100},{id:'A2',title:'未開放',type:'general_15',status:'pending'}],votes:{A1:{U0:'for',U1:'abstain'}}});
+test('一般決議：出席40、贊成15、反對10、棄權15，不通過',()=>assert.equal(tally('general_15',[15,10,15],['for','against','abstain']).isPassed,false));
+test('一般決議：剛好出席一半不通過；超過一半但不足15亦不通過',()=>{assert.equal(tally('general_15',[15,15],['for','abstain']).isPassed,false);assert.equal(tally('general_15',[14.999999,5],['for','against']).isPassed,false);assert.equal(tally('general_15',[15,14.999999],['for','abstain']).isPassed,true);});
+test('25%同時檢查出席過半及總值下限',()=>{assert.equal(tally('special_25',[25,25],['for','abstain']).isPassed,false);assert.equal(tally('special_25',[25,24],['for','against']).isPassed,true);assert.equal(tally('special_25',[24.999999,1],['for','against']).isPassed,false);});
+test('總值過半：50不通過，50.000001通過',()=>{assert.equal(tally('special_50',[50],['for']).isPassed,false);assert.equal(tally('special_50',[50.000001],['for']).isPassed,true);});
+test('三分之二：66.666666不足，66.666667足夠；不可用顯示值',()=>{const lo=tally('special_66',[66.666666],['for']);const hi=tally('special_66',[66.666667],['for']);assert.equal(lo.forPercent,hi.forPercent);assert.equal(lo.isPassed,false);assert.equal(hi.isPassed,true);});
+test('六位小數整數加權，0.1+0.2無浮點誤差',()=>assert.equal(C.totalWeight([unit('U0',0.1),unit('U1',0.2)]),300000));
+test('年度例外須明確確認，主席票不套15%下限',()=>{assert.equal(tally('annual_majority',[6,4],['for','against']).isPassed,true);assert.equal(tally('annual_majority',[6,4],['for','against'],{noticeConfirmed:false}).isPassed,false);assert.equal(tally('chair_majority',[6,4],['for','against']).isPassed,true);});
+test('未投與棄權分開並同屬出席分母',()=>{const t=tally('general_15',[15,10,20],['for','abstain']);assert.equal(t.unvotedPercent,'20.00');assert.equal(t.abstainPercent,'10.00');assert.equal(t.isPassed,false);});
+test('pending/not_voted不宣告成敗',()=>{for(const status of ['pending','not_voted'])assert.equal(tally('general_15',[15],['for'],{status}).resultLabel,'未表決');});
+test('進行中備份往返，完整名冊、代理、票、時間及規則保留',()=>{const s=state();s.units[1]={...s.units[1],status:'proxy',proxyType:'owner',proxyToOwnerId:'U0'};assert.deepEqual(C.importBackup(C.exportBackup(s)),C.validateState(s));});
+test('結束所有已開放議程，未開放標未表決；不修改輸入',()=>{const s=state(), finished=C.finishMeeting(s,300);assert.equal(s.meetingStatus,'started');assert.equal(finished.agendas[0].status,'ended');assert.equal(finished.agendas[0].endTime,300);assert.equal(finished.agendas[1].status,'not_voted');assert.deepEqual(C.importBackup(C.exportBackup(finished)),finished);});
+test('拒絕錯誤JSON、未知版本及規則漂移',()=>{assert.throws(()=>C.importBackup('no'));for(const prop of ['schemaVersion','ruleVersion','format']){const b=JSON.parse(C.exportBackup(state()));b[prop]='unknown';assert.throws(()=>C.importBackup(JSON.stringify(b)));}});
+test('拒絕未知／缺席單位票、不合法選項、幽靈議程',()=>{for(const mutate of [s=>s.votes.A1.U999='for',s=>s.votes.A1.U2='for',s=>s.votes.A1.U0='invalid',s=>s.votes.Unknown={U0:'for'}]){const s=state();mutate(s);assert.throws(()=>C.validateState(s));}});
+test('拒絕重複單位、負值、過多精度及總份額不完整的進行中會議',()=>{for(const mutate of [s=>s.units.push(s.units[0]),s=>s.units[0].valuePercent=-1,s=>s.units[0].valuePercent=15.0000001,s=>s.units[2].valuePercent=74]){const s=state();mutate(s);assert.throws(()=>C.validateState(s));}});
+test('拒絕損壞時間與狀態，但容許待開始的不完整名冊',()=>{const s=state();s.meetingStatus='ended';assert.throws(()=>C.validateState(s));const p={...state(),meetingInfo:{name:'x',datetime:'',location:''},meetingStatus:'pending',agendas:[],votes:{},units:[]};assert.equal(C.validateState(p).units.length,0);});
+test('拒絕危險ID，還原不接受污染鍵',()=>{const b=JSON.parse(C.exportBackup(state()));b.data.units[0].id='constructor';assert.throws(()=>C.importBackup(JSON.stringify(b)));assert.equal({}.polluted,undefined);});
+test('確認代理必須指向已確認出席的業主',()=>{const s=state();s.units[1]={...s.units[1],status:'proxy',proxyType:'owner',proxyToOwnerId:'U2'};assert.throws(()=>C.validateState(s));});
+test('CSV支援BOM、CRLF、引號逗號、換行和雙引號',()=>{assert.deepEqual(C.parseCSV('\uFEFFh1,h2\r\n"甲,乙","說""明"\r\n"跨\n行",值'),[['甲,乙','說"明'],['跨\n行','值']]);assert.throws(()=>C.parseCSV('header\n"missing'));});

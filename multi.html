@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>業主大會｜多人工作台</title><link rel="stylesheet" href="multi.css"><script src="meeting-core.js" defer></script><script src="multi.js" defer></script></head>
+<body><header><a href="index.html">業主大會</a><span>多人工作台</span><span id="connection">未連接後端</span></header><main>
+<section id="login"><div class="intro"><p class="eyebrow">會議協作 · 紙票與電子票</p><h1>每一票，都有核對依據。</h1><p>選擇大會投票模式，由工作人員各司其職，統一保存結果及操作紀錄。</p></div>
+<div class="cards"><article><b>A · 現場手機投票</b><p>先核實簽到，再發個別投票憑證。</p></article><article><b>B · 現場＋遠端</b><p>另核對遠端出席依據，記錄確認人。</p></article><article><b>C · 紙票協作</b><p>掃碼收票、雙人盲錄、處理差異。</p></article></div>
+<form id="login-form" class="panel"><h2>連接會議伺服器</h2><p>GitHub Pages 只提供畫面。請填已部署的後端網址；未連接時不能同步或錄票。</p><label>後端網址<input id="api" type="url" placeholder="https://meeting.example.com" required></label><div class="row"><label>工作人員帳戶<input id="username" autocomplete="username" required></label><label>密碼<input id="password" type="password" autocomplete="current-password" required></label></div><button>連接並登入</button></form>
+<details class="panel"><summary>首次使用及操作次序</summary><ol><li>在單機版建立完整名冊及議程，匯出尚未開始的 JSON 備份。</li><li>部署後端並建立管理員；登入後匯入備份，建立新會議。</li><li>核實出席／代理資料，設定投票模式和工作人員帳戶。</li><li>開始會議、開放議程，再發票或發電子投票憑證。</li><li>C 模式：收票 → 甲錄入 → 乙盲錄 → 裁定差異 → 核對未收回票 → 截止。</li></ol><p>手機鏡頭掃碼需瀏覽器支援 BarcodeDetector；亦可使用 USB QR 掃碼器或輸入票號。OMR 整批讀票尚未啟用。</p></details></section>
+<section id="app" hidden><div class="toolbar"><label>目前會議<select id="meeting-select"></select></label><button id="refresh" class="secondary">重新整理</button><button id="logout" class="secondary">登出</button></div><div id="create"></div><div id="workspace"></div></section>
+<section id="voter" hidden></section><p id="message" role="status" aria-live="polite"></p><div id="print-area"></div>
+</main><footer>第14/2017號法律 · <a href="https://bo.dsaj.gov.mo/bo/i/2017/34/lei14_cn.asp" target="_blank" rel="noopener">官方原文</a> · 系統結果須連同召集、身份及程序紀錄核對。</footer></body></html>

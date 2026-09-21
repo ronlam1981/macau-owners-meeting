@@ -1,0 +1,24 @@
+{
+  "name": "macau-owners-meeting",
+  "private": true,
+  "version": "0.3.0",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "start": "node server/server.cjs",
+    "backup:db": "node server/backup.cjs"
+  },
+  "description": "Owners meeting: static single-device app plus authenticated Node/SQLite collaboration backend",
+  "devDependencies": {
+    "@babel/core": "7.28.4",
+    "@babel/preset-react": "7.27.1",
+    "jsdom": "26.1.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "dependencies": {
+    "qrcode": "1.5.4"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
