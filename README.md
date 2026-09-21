@@ -1,3 +1,19 @@
+# 澳門業主大會系統｜0.3 多人協作開發版
+
+新增 `multi.html` 多人工作台及 `server/` Node.js 24＋SQLite後端。
+
+- A：現場電子票；B：現場＋遠端，另核對法律及程序依據；C：QR紙票＋獨立雙人录入。
+- 支援真實帳戶權限、限定場次、共用資料庫、盲核、裁定、註銷補發、稽核和資料庫備份。
+- `npm ci`、`npm test`；設定ADMIN_PASSWORD後執行 `node server/server.cjs create-admin admin`，再 `npm start`。
+- **後端尚未部署到公開主機。** GitHub Pages前端需要連接已部署的HTTPS後端才可多人操作。
+- [完整前後端架構、API、權限、部署及操作手冊](docs/前後端架構與操作手冊.md)。
+- 已有單機資料不會自動移到後端；以尚未開始的JSON備份建新會議。多人JSON用於核對，災難還原使用SQLite快照。
+- OMR尚未實作；實機掃碼、A4分頁及正式主機仍待驗收。
+
+---
+
+以下是第一階段單機版說明（其中「無後端」只指 `index.html` 原單機模式）：
+
 # 澳門分層建築物所有人大會｜單機試用版
 
 公開網站：https://ronlam1981.github.io/macau-owners-meeting/

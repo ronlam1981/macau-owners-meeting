@@ -1,0 +1,3 @@
+'use strict';
+const {DatabaseSync,backup}=require('node:sqlite');const fs=require('node:fs');const path=require('node:path');
+(async()=>{const source=process.env.MEETING_DB||path.join(__dirname,'data','meetings.sqlite');if(!fs.existsSync(source))throw new Error('資料庫不存在');const target=process.argv[2];if(!target)throw new Error('用法：npm run backup:db -- /安全路徑/meeting-backup.sqlite');if(fs.existsSync(target))throw new Error('備份目的檔已存在，拒絕覆蓋');fs.mkdirSync(path.dirname(path.resolve(target)),{recursive:true,mode:0o700});const db=new DatabaseSync(source,{readOnly:true});await backup(db,target);db.close();fs.chmodSync(target,0o600);console.log('資料庫備份完成');})().catch(e=>{console.error(e.message);process.exitCode=1;});
